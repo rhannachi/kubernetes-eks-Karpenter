@@ -19,7 +19,7 @@ kubectl top pods
 ```
 
 Applique le déploiement :
-* [deployment.yaml](k8s/base/deployment.yaml)\
+* [deployment.yaml](k8s/base/deployment.yaml)
 * [hpa.yaml](k8s/base/hpa.yaml)
 ```shell
 kubectl kustomize ./k8s/overlay/minikube
@@ -106,5 +106,102 @@ kubectl delete -k -k ./k8s/overlay/minikube
 ```
 
 ---
+---
 
 ## AWS EKS
+
+### 0. Prérequis: 
+https://github.com/rhannachi/kubernetes-aws-microservices/blob/main/README-aws-install-config.md
+
+### 1. Création du cluster Kubernetes
+
+Créer un cluster EKS en utilisant un fichier de configuration `cluster.yaml` :
+```bash
+eksctl create cluster -f ./infra/cluster.yaml
+```
+Ce fichier définit le nombre de nœuds, le type d’instance, le VPC, les sous-réseaux et d’autres paramètres du cluster.
+
+Vérifie que les nœuds sont opérationnels :
+```bash
+kubectl get nodes
+```
+Tu devrais voir tous les nœuds du cluster en `Ready`.
+
+---
+
+### 2. Déploiement du metrics-server
+
+Nécessaire pour le HPA:
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+ou TODO !!!!!
+```  
+kubectl apply -f k8s/overlay/aws/metric-server.yaml
+```
+
+Vérifie :
+```bash
+kubectl top pods
+kubectl top nodes
+```
+Si tu obtiens des métriques, tout est bon !
+
+---
+
+### 3. Cluster Autoscaler et php-apache
+
+```shell
+kubectl apply -k ./k8s/overlay/aws
+# kubectl apply -f cluster-autoscaler.yaml
+
+kubectl -n kube-system get pods | grep autoscaler
+kubectl logs -n kube-system deployment/cluster-autoscaler
+```
+
+---
+
+### 4. Générateur de charge (load-generator)
+
+```
+kubectl apply -f ./utils/load-generator.yaml
+```
+
+---
+
+### 5. Vérifier le scaling en temps réel
+
+Surveille le HPA :
+
+```bash
+kubectl get hpa -w
+```
+
+Tu verras le scaling monter :
+
+```
+NAME             REFERENCE               TARGETS   MINPODS   MAXPODS   REPLICAS
+php-apache-hpa   Deployment/php-apache   200%/50%   1         10        5
+```
+
+Et côté pods :
+
+```bash
+kubectl get pods -l app=php-apache -w
+```
+
+Si la charge est trop forte pour 2 nœuds EC2, le **Cluster Autoscaler** ajoutera automatiquement des nœuds :
+
+```bash
+kubectl get nodes
+```
+
+---
+
+### 6. Nettoyage
+
+```bash
+kubectl delete -f load-generator.yaml
+kubectl delete -k ./k8s/overlay/aws
+eksctl delete cluster -f ./infra/cluster.yaml
+```

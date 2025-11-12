@@ -1,0 +1,46 @@
+# eks-cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: microservices-demo-cluster
+  region: us-east-1
+  version: "1.34"
+
+vpc:
+  cidr: 10.0.0.0/16
+
+iam:
+  # nécessaire pour le Cluster Autoscaler (utilisation d’un ServiceAccount IAM).
+  withOIDC: true
+
+managedNodeGroups:
+  - name: managed-ng-1
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2 # minSize et maxSize contrôlent la capacité EC2 dynamique
+    maxSize: 5 # minSize et maxSize contrôlent la capacité EC2 dynamique
+    volumeSize: 40
+    iam:
+      withAddonPolicies:
+        cloudWatch: true
+        autoScaler: true # donne au CA les permissions IAM nécessaires.
+    labels:
+      role: worker
+
+    # obligatoires pour que le CA identifie le node group.
+    tags:
+      k8s.io/cluster-autoscaler/enabled: "true"
+      k8s.io/cluster-autoscaler/microservices-demo-cluster: "owned"
+
+addons:
+  - name: vpc-cni
+    version: latest
+  - name: coredns
+    version: latest
+  - name: kube-proxy
+    version: latest
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["*"]
