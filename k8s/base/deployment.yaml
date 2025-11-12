@@ -17,10 +17,18 @@ spec:
           image: k8s.gcr.io/hpa-example
           ports:
             - containerPort: 80
+          # resources: Section cruciale définissant les besoins en ressources de ce conteneur.
           resources:
+            # requests: Les ressources minimales garanties pour le conteneur.
+            # Kubernetes utilise cette valeur pour décider sur quel Node placer le Pod.
             requests:
+              # cpu: 200m signifie 200 millicores CPU (soit 0.2 CPU core).
+              # C'est la base de calcul pour le HPA (le "100%" dans le calcul de l'utilisation).
               cpu: 200m
+            # limits: La limite absolue que le conteneur ne peut pas dépasser.
+            # Si le conteneur tente d'utiliser plus de cette limite, il sera "throttled" (ralenti) ou arrêté (OOMKilled pour la mémoire).
             limits:
+              # cpu: La limite CPU est fixée à 500 millicores (0.5 CPU core).
               cpu: 500m
 ---
 apiVersion: v1

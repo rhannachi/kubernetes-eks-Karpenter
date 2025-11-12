@@ -3,16 +3,26 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: php-apache-hpa
 spec:
+  # Cible à mettre à l'échelle : référence au Deployment à auto-scaler
   scaleTargetRef:
+    # API de la cible
     apiVersion: apps/v1
+    # Type de la cible
     kind: Deployment
+    # Nom du Deployment à scaler
     name: php-apache
+  # Nombre minimum de Pods (le HPA ne descendra pas en dessous de 1)
   minReplicas: 1
+  # Nombre maximum de Pods (le HPA n'ira pas au-delà de 10)
   maxReplicas: 10
+  # Définition des métriques à surveiller
   metrics:
     - type: Resource
       resource:
+        # Surveillance de la ressource CPU
         name: cpu
         target:
+          # Le type de cible est l'Utilisation (pourcentage par rapport à la 'request')
           type: Utilization
+          # Seuil : Si l'utilisation moyenne du CPU dépasse 50%, un scale-up est déclenché
           averageUtilization: 50
