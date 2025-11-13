@@ -132,28 +132,84 @@ Tu devrais voir tous les nœuds du cluster en `Ready`.
 ### 2. Déploiement du metrics-server
 
 Nécessaire pour le HPA:
-```bash
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-```
-ou TODO !!!!!
-```  
+```shell
+kubectl delete -f k8s/overlay/aws/metric-server.yaml
 kubectl apply -f k8s/overlay/aws/metric-server.yaml
 ```
 
 Vérifie :
 ```bash
-kubectl top pods
+kubectl top pods -A
 kubectl top nodes
 ```
 Si tu obtiens des métriques, tout est bon !
 
 ---
 
-### 3. Cluster Autoscaler et php-apache
+### Commandes pour créer le rôle IAM & l’annoter
+
+#### 1. Créer le rôle IAM avec la trust policy :
+
+- `<ACCOUNT_ID>` : ton ID de compte AWS (ex. 272391830312) (obtenu via: `aws sts get-caller-identity --query "Account" --output text`)
+- `<REGION>` : ta région (ex. us‑east‑1)
+- `<OIDC_PROVIDER_ID>` : l’ID OIDC de ton cluster (obtenu via: `aws eks describe-cluster --name microservices-demo-cluster --query "cluster.identity.oidc.issuer"` et récupération de la partie finale après /id/)
+
+modifier `trust-policy.json`
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/oidc.eks.<REGION>.amazonaws.com/id/<OIDC_PROVIDER_ID>"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.<REGION>.amazonaws.com/id/<OIDC_PROVIDER_ID>:sub": "system:serviceaccount:kube-system:cluster-autoscaler",
+          "oidc.eks.<REGION>.amazonaws.com/id/<OIDC_PROVIDER_ID>:aud": "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+```
+
+```shell
+aws iam create-role --role-name ClusterAutoscalerRole --assume-role-policy-document file://trust-policy.json
+```
+
+#### 2. Attacher la policy AWS recommandée (ou ta version personnalisée) :
+```shell
+aws iam create-policy --policy-name ClusterAutoscalerPolicy --policy-document file://cluster-autoscaler-policy.json
+```
+Note la valeur du champ "Arn" retourné (par ex. `arn:aws:iam::<ACCOUNT_ID>:policy/ClusterAutoscalerPolicy`).
+
+* Attache cette policy à ton rôle (Remplace <ACCOUNT_ID> par ton ID AWS réel) :
+```shell
+aws iam attach-role-policy --role-name ClusterAutoscalerRole --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/ClusterAutoscalerPolicy
+```
+
+* Vérifie que la policy est bien attachée :
+```shell
+aws iam list-attached-role-policies --role-name ClusterAutoscalerRole
+```
+#### 3. Cluster Autoscaler
+```shell
+kubectl apply -f k8s/overlay/aws/cluster-autoscaler.yaml
+```
+
+#### 4. Annoter le ServiceAccount Kubernetes :
+```shell
+kubectl annotate serviceaccount cluster-autoscaler -n kube-system eks.amazonaws.com/role-arn=arn:aws:iam::<ACCOUNT_ID>:role/ClusterAutoscalerRole
+```
+---
+
+### 3. php-apache
 
 ```shell
 kubectl apply -k ./k8s/overlay/aws
-# kubectl apply -f cluster-autoscaler.yaml
 
 kubectl -n kube-system get pods | grep autoscaler
 kubectl logs -n kube-system deployment/cluster-autoscaler

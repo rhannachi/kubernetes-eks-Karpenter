@@ -15,29 +15,10 @@ metadata:
   name: cluster-autoscaler
 rules:
   - apiGroups: [""]
-    resources: ["events", "endpoints"]
-    verbs: ["create", "patch"]
-  - apiGroups: [""]
-    resources: ["pods/eviction"]
-    verbs: ["create"]
-  - apiGroups: [""]
-    resources: ["pods/status"]
-    verbs: ["update"]
-  - apiGroups: [""]
-    resources: ["endpoints"]
-    resourceNames: ["cluster-autoscaler"]
-    verbs: ["get", "update"]
-  - apiGroups: [""]
-    resources: ["pods", "services", "replicationcontrollers", "persistentvolumeclaims", "persistentvolumes"]
-    verbs: ["get", "list", "watch"]
+    resources: ["nodes", "pods", "services", "replicationcontrollers", "persistentvolumeclaims", "persistentvolumes", "events", "endpoints"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
   - apiGroups: ["extensions", "apps"]
     resources: ["daemonsets", "replicasets", "statefulsets", "deployments"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["batch", "extensions"]
-    resources: ["jobs"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -88,14 +69,14 @@ spec:
               memory: 300Mi
           command:
             - ./cluster-autoscaler
-            - --v=4
+            - --v=5
             - --stderrthreshold=info
             - --cloud-provider=aws
             - --skip-nodes-with-local-storage=false
-            - --expander=least-waste
             - --balance-similar-node-groups
             - --skip-nodes-with-system-pods=false
-            - --nodes=2:5:managed-ng-1
+            - --expander=least-waste
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/microservices-demo-cluster
           env:
             - name: AWS_REGION
               value: us-east-1
@@ -106,5 +87,5 @@ spec:
       volumes:
         - name: ssl-certs
           hostPath:
-            path: /etc/ssl/certs/ca-bundle.crt
+            path: /etc/ssl/certs/ca-certificates.crt
             type: File
