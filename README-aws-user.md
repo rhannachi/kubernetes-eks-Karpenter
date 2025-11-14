@@ -2,7 +2,7 @@
 
 ## 1. Installation
 Tu dois disposer de :
-* D’un compte AWS actif
+* D'un compte AWS actif
 * De droits IAM suffisants (création de cluster EKS, VPC, EC2…)
 
 ### Sur ton poste local :
@@ -29,34 +29,61 @@ Tu dois disposer de :
   eksctl version
   ```
 
+#### Installer `kubectl`
+
+  ```bash
+  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+  kubectl version --client
+  ```
+
 ---
 
 ## 2. Créer un utilisateur IAM sécurisé (Access Key / Secret Key)
 
-### Étape 1 : Créer un nouvel utilisateur IAM avec tous les droits EKS
+### Étape 1 : Créer un nouvel utilisateur IAM
 
-> Console → **IAM** → **Users** → **Create user**
+> ⚠️ **IMPORTANT** : Les Étapes 1, 2 et 5 doivent être effectuées via la **Console AWS** (interface web) avec un compte administrateur, car un utilisateur IAM sans permissions ne peut pas se créer ou s'attribuer des permissions lui-même via CLI.
 
-* Nom de l’utilisateur : `eks-user`
+#### Via la Console AWS :
 
-### Étape 2 : Donner les permissions
-Crée un **groupe IAM “eks-user-group”** et attache-lui ce policies :
-  ```
-  IAMFullAccess
-  ```
+1. Connecte-toi à https://console.aws.amazon.com avec un compte **administrateur**
+2. Va dans **IAM** → **Users** → **Create user**
+3. Nom de l'utilisateur : `eks-user`
+4. Coche **Provide user access to the AWS Management Console** (optionnel, si tu veux un accès console)
+5. Clique sur **Next**
+6. Ne sélectionne aucun groupe ou permission pour l'instant
+7. Clique sur **Next** puis **Create user**
 
-Puis ajoute ton utilisateur `eks-user` à ce groupe.
+### Étape 2 : Créer un groupe IAM et y ajouter l'utilisateur
 
-### Étape 3 : Récupérer les clés
+#### Via la Console AWS :
 
-À la fin de la création, dans les informations de l'utilisateur `eks-user`, crée une clé d'accès :
+1. Va dans **IAM** → **Groups** → **Create group**
+2. Nom du groupe : `eks-user-group`
+3. Ne sélectionne aucune policy pour l'instant
+4. Clique sur **Create group**
 
-* Télécharge le fichier CSV
-* Ou note :
-    * **Access key ID** (ex: `AKIA...`)
-    * **Secret access key** (ex: `abcd...`)
+5. Va dans **IAM** → **Users** → `eks-user`
+6. Onglet **Groups** → **Add user to groups**
+7. Sélectionne `eks-user-group`
+8. Clique sur **Add to groups**
 
-=> Tu **ne pourras plus revoir la clé secrète** plus tard, garde-la bien.
+### Étape 3 : Récupérer les clés d'accès
+
+#### Via la Console AWS :
+
+1. Va dans **IAM** → **Users** → `eks-user`
+2. Onglet **Security credentials**
+3. Section **Access keys** → **Create access key**
+4. Sélectionne **Command Line Interface (CLI)**
+5. Coche la case de confirmation
+6. Clique sur **Next** puis **Create access key**
+7. **⚠️ IMPORTANT** : Télécharge le fichier CSV ou note bien :
+   - **Access key ID** (ex: `AKIA...`)
+   - **Secret access key** (ex: `abcd...`)
+
+=> Tu **ne pourras plus revoir la clé secrète** après cette étape, garde-la bien !
 
 ### Étape 4 : Configurer AWS CLI
 
@@ -88,114 +115,262 @@ Tu dois voir ton utilisateur IAM :
   }
   ```
 
-### Étape 5 : Attacher les policies AWS managées à notre groupe IAM "eks-user-group"
+### Étape 5 : Créer et attacher une policy IAM personnalisée pour EKS et Karpenter
 
-#### 1 — Attacher la policy **AmazonEKSClusterPolicy**
-  ```bash
-  aws iam attach-group-policy \
-  --group-name eks-user-group \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
-  ```
+> ⚠️ **IMPORTANT** : Cette étape doit être effectuée via la **Console AWS** avec un compte administrateur.
 
-#### 2 — Attacher la policy **AmazonEKSServicePolicy**
-  ```bash
-  aws iam attach-group-policy \
-  --group-name eks-user-group \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEKSServicePolicy
-  ```
+Pour suivre le principe du moindre privilège, nous allons créer une policy personnalisée qui donne uniquement les permissions nécessaires pour gérer un cluster EKS avec Karpenter.
 
-#### 3 — Attacher la policy **AmazonEKSWorkerNodePolicy**
-  ```bash
-  aws iam attach-group-policy \
-  --group-name eks-user-group \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
-  ```
+#### 1 — Préparer le document de policy
 
-#### 4 — Attacher la policy **AmazonEC2FullAccess**
-  ```bash
-  aws iam attach-group-policy \
-  --group-name eks-user-group \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEC2FullAccess
-  ```
+Sur ton poste local, crée un fichier `eks-admin-policy.json` avec les permissions nécessaires :
 
-#### 5 — Attacher la policy **AmazonVPCFullAccess**
-  ```bash
-  aws iam attach-group-policy \
-  --group-name eks-user-group \
-  --policy-arn arn:aws:iam::aws:policy/AmazonVPCFullAccess
-  ```
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EKSClusterManagement",
+      "Effect": "Allow",
+      "Action": [
+        "eks:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EC2ForEKS",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AllocateAddress",
+        "ec2:AssociateRouteTable",
+        "ec2:AttachInternetGateway",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateInternetGateway",
+        "ec2:CreateNatGateway",
+        "ec2:CreateRoute",
+        "ec2:CreateRouteTable",
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateSubnet",
+        "ec2:CreateTags",
+        "ec2:CreateVpc",
+        "ec2:DeleteInternetGateway",
+        "ec2:DeleteNatGateway",
+        "ec2:DeleteRoute",
+        "ec2:DeleteRouteTable",
+        "ec2:DeleteSecurityGroup",
+        "ec2:DeleteSubnet",
+        "ec2:DeleteTags",
+        "ec2:DeleteVpc",
+        "ec2:DescribeAccountAttributes",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeKeyPairs",
+        "ec2:DescribeLaunchTemplates",
+        "ec2:DescribeLaunchTemplateVersions",
+        "ec2:DescribeNatGateways",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVpcs",
+        "ec2:DetachInternetGateway",
+        "ec2:DisassociateRouteTable",
+        "ec2:ModifySubnetAttribute",
+        "ec2:ModifyVpcAttribute",
+        "ec2:ReleaseAddress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RunInstances",
+        "ec2:TerminateInstances",
+        "ec2:CreateLaunchTemplate",
+        "ec2:DeleteLaunchTemplate"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMForEKS",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:PassRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:CreateOpenIDConnectProvider",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:GetOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviders",
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagRole",
+        "iam:TagInstanceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationForEKS",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:ListStacks",
+        "cloudformation:UpdateStack"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AutoScalingForEKS",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:CreateAutoScalingGroup",
+        "autoscaling:CreateLaunchConfiguration",
+        "autoscaling:DeleteAutoScalingGroup",
+        "autoscaling:DeleteLaunchConfiguration",
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:UpdateAutoScalingGroup",
+        "autoscaling:CreateOrUpdateTags",
+        "autoscaling:DeleteTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SSMForKarpenter",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": "arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*"
+    },
+    {
+      "Sid": "PricingForKarpenter",
+      "Effect": "Allow",
+      "Action": [
+        "pricing:GetProducts"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SQSForKarpenter",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:CreateQueue",
+        "sqs:DeleteQueue",
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl",
+        "sqs:SetQueueAttributes",
+        "sqs:TagQueue"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EventsForKarpenter",
+      "Effect": "Allow",
+      "Action": [
+        "events:DeleteRule",
+        "events:DescribeRule",
+        "events:PutRule",
+        "events:PutTargets",
+        "events:RemoveTargets"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
-#### 6 — Attacher la policy **AWSCloudFormationFullAccess**
-  ```bash
-  aws iam attach-group-policy \
-  --group-name eks-user-group \
-  --policy-arn arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
-  ```
+#### 2 — Créer la policy dans AWS via la Console
 
-#### 7 — Vérifie que tout est bien attaché
+1. Va dans **IAM** → **Policies** → **Create policy**
+2. Clique sur l'onglet **JSON**
+3. Copie-colle le contenu du fichier `eks-admin-policy.json` (ci-dessus) dans l'éditeur
+4. Clique sur **Next**
+5. Nom de la policy : `EKSAdminPolicy`
+6. Description : `Policy for EKS cluster management with Karpenter support`
+7. Clique sur **Create policy**
+
+#### 3 — Attacher toutes les policies au groupe eks-user-group
+
+1. Va dans **IAM** → **Groups** → `eks-user-group`
+2. Onglet **Permissions** → **Add permissions** → **Attach policies**
+3. Cherche et sélectionne les 5 policies suivantes :
+   - ✅ `EKSAdminPolicy` (celle que tu viens de créer)
+   - ✅ `AmazonEKSClusterPolicy`
+   - ✅ `AmazonEKSWorkerNodePolicy`
+   - ✅ `AmazonEC2ContainerRegistryReadOnly`
+   - ✅ `IAMReadOnlyAccess` (permet de vérifier les configurations IAM)
+4. Clique sur **Attach policies**
+
+#### 4 — Vérifier que toutes les policies sont bien attachées
+
+Maintenant, depuis ton terminal avec l'utilisateur `eks-user`, tu peux vérifier :
+
   ```bash
   aws iam list-attached-group-policies --group-name eks-user-group --output table
-  ------------------------------------------------------------------------------------------
-  |                                ListAttachedGroupPolicies                               |
-  +----------------------------------------------------------------------------------------+
-  ||                                   AttachedPolicies                                   ||
-  |+------------------------------------------------------+-------------------------------+|
-  ||                       PolicyArn                      |          PolicyName           ||
-  |+------------------------------------------------------+-------------------------------+|
-  ||  arn:aws:iam::aws:policy/AmazonEC2FullAccess         |  AmazonEC2FullAccess          ||
-  ||  arn:aws:iam::aws:policy/IAMFullAccess               |  IAMFullAccess                ||
-  ||  arn:aws:iam::aws:policy/AmazonEKSClusterPolicy      |  AmazonEKSClusterPolicy       ||
-  ||  arn:aws:iam::aws:policy/AmazonVPCFullAccess         |  AmazonVPCFullAccess          ||
-  ||  arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy   |  AmazonEKSWorkerNodePolicy    ||
-  ||  arn:aws:iam::aws:policy/AmazonEKSServicePolicy      |  AmazonEKSServicePolicy       ||
-  ||  arn:aws:iam::aws:policy/AWSCloudFormationFullAccess |  AWSCloudFormationFullAccess  ||
-  |+------------------------------------------------------+-------------------------------+|
-  
-  ```
-
-#### 8 — Ajouter la policy "AllowEksFullAccess" à notre groupe
-
-Cette policy accorde à ton groupe (et donc à ton utilisateur `eks-user`) toutes les permissions EKS.
-C’est équivalent à `AmazonEKSFullAccess`, qui n’existe pas comme policy managée mais que nous recréons ici.
-
-  ```bash
-  $ aws iam put-group-policy \
-  --group-name eks-user-group \
-  --policy-name AllowEksFullAccess \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": [
-          "eks:*"
-        ],
-        "Resource": "*"
-      }
-    ]
-}'
-  ```
-
-Vérifie que la policy a bien été ajoutée :
-
-  ```bash
-  aws iam list-group-policies --group-name eks-user-group
   ```
 
 Résultat attendu :
-
   ```
-  {
-    "PolicyNames": [
-      "AllowEksFullAccess"
-    ]
-  }
+  ----------------------------------------------------------------------------------
+  |                        ListAttachedGroupPolicies                               |
+  +--------------------------------------------------------------------------------+
+  ||                              AttachedPolicies                                ||
+  |+-----------------------------------------------------------+------------------+|
+  ||                        PolicyArn                          |   PolicyName     ||
+  |+-----------------------------------------------------------+------------------+|
+  ||  arn:aws:iam::aws:policy/AmazonEKSClusterPolicy           | AmazonEKSCluster...||
+  ||  arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy        | AmazonEKSWorker...||
+  ||  arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly| AmazonEC2Conta...||
+  ||  arn:aws:iam::aws:policy/IAMReadOnlyAccess                | IAMReadOnlyAccess||
+  ||  arn:aws:iam::272391830312:policy/EKSAdminPolicy          | EKSAdminPolicy   ||
+  |+-----------------------------------------------------------+------------------+|
   ```
 
-Teste l’accès EKS :
+#### 5 — Tester l'accès EKS
 
-  ```bash
-  aws eks describe-addon-versions
-  ```
+```bash
+aws eks describe-addon-versions --query "addons[*].addonName" --output table
+```
+```shell
+aws eks describe-addon-versions --output json | grep -E "vpc-cni|kube-proxy|coredns" | head -5
+```
 
-Si tout est bon, la commande doit retourner une longue liste d’add-ons EKS (versions de vpc-cni, kube-proxy, coredns, etc.).
+Si tout est bon, la commande doit retourner une liste des add-ons EKS disponibles (vpc-cni, kube-proxy, coredns, etc.).
+
+---
+
+## ✅ Récapitulatif
+
+Tu as maintenant :
+- ✅ Un utilisateur IAM `eks-user` avec des clés d'accès
+- ✅ Un groupe IAM `eks-user-group` avec des permissions sécurisées
+- ✅ Une policy personnalisée `EKSAdminPolicy` suivant le principe du moindre privilège
+- ✅ 5 policies attachées au groupe :
+  1. `EKSAdminPolicy` (personnalisée - gestion EKS + Karpenter)
+  2. `AmazonEKSClusterPolicy` (control plane EKS)
+  3. `AmazonEKSWorkerNodePolicy` (worker nodes)
+  4. `AmazonEC2ContainerRegistryReadOnly` (pull images Docker)
+  5. `IAMReadOnlyAccess` (consultation IAM)
+- ✅ Les permissions nécessaires pour créer et gérer un cluster EKS avec Karpenter
+
