@@ -121,6 +121,15 @@ cat > infra/karpenter-controller-policy.json << 'EOF'
         "eks:DescribeCluster"
       ],
       "Resource": "arn:aws:eks:${AWS_REGION}:${AWS_ACCOUNT_ID}:cluster/${CLUSTER_NAME}"
+    },
+    {
+      "Sid": "AllowIAMInstanceProfileActions",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListInstanceProfiles",
+        "iam:GetInstanceProfile"
+      ],
+      "Resource": "*"
     }
   ]
 }
@@ -156,12 +165,18 @@ aws iam get-policy --policy-arn arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterC
 
 ### 1.3 — Créer le Service Account IAM pour Karpenter
 
+> 💡 **NOTE** : Le service account est créé directement dans le namespace `karpenter` (même namespace où Karpenter sera installé). Cela évite les problèmes de trust policy.
+
 ```bash
+# Créer le namespace karpenter en premier
+kubectl create namespace karpenter
+
+# Créer le service account IAM dans le namespace karpenter
 eksctl create iamserviceaccount \
   --cluster=${CLUSTER_NAME} \
   --region=${AWS_REGION} \
   --name=karpenter \
-  --namespace=kube-system \
+  --namespace=karpenter \
   --attach-policy-arn=arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerPolicy-${CLUSTER_NAME} \
   --approve \
   --override-existing-serviceaccounts
@@ -281,10 +296,10 @@ Ou vérifie manuellement :
 
 ```bash
 # Vérifier le service account
-kubectl get sa karpenter -n kube-system -o yaml
+kubectl get sa karpenter -n karpenter -o yaml
 
 # Vérifier l'annotation IAM
-kubectl get sa karpenter -n kube-system -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}'
+kubectl get sa karpenter -n karpenter -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}'
 
 # Vérifier le rôle des nodes
 aws iam get-role --role-name KarpenterNodeRole-${CLUSTER_NAME}
@@ -371,11 +386,13 @@ nodeclaims.karpenter.sh
 nodepools.karpenter.sh
 ```
 
-Voir les logs de Karpenter (optionnel) :
+Vérifier les logs de Karpenter (ne devrait plus contenir d'erreurs `AccessDenied`) :
 
 ```bash
-kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -f
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter --tail=50
 ```
+
+Les logs doivent afficher uniquement des messages `INFO` sur les contrôleurs qui démarrent. Si tu vois encore des erreurs `AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`, vérifie que tu as bien mis à jour le trust policy à l'étape 2.3.
 
 ---
 
@@ -478,3 +495,49 @@ Tu as maintenant :
 **Prochaine étape** : Tester le scaling avec une application de test ! 🚀
 
 Consulte le fichier principal [README.md](README.md) pour déployer une application et voir Karpenter en action.
+
+---
+
+## 🔧 Troubleshooting
+
+### Erreur : `AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`
+
+**Symptôme** : Les pods Karpenter sont en `CrashLoopBackOff` et les logs montrent :
+```
+api error AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+**Cause** : Le service account Karpenter a été créé dans le namespace `kube-system` mais Karpenter tourne dans le namespace `karpenter`. Le trust policy du rôle IAM ne correspond pas au namespace réel.
+
+**Solution** : Mettre à jour le trust policy du rôle IAM via la Console AWS pour changer :
+- De : `"system:serviceaccount:kube-system:karpenter"`
+- À : `"system:serviceaccount:karpenter:karpenter"`
+
+**Prévention** : Créer directement le service account dans le namespace `karpenter` (comme indiqué dans l'étape 1.3 ci-dessus).
+
+### Erreur : `AccessDenied: Not authorized to perform iam:ListInstanceProfiles`
+
+**Symptôme** : Les logs Karpenter montrent des erreurs répétées :
+```
+api error AccessDenied: User: ... is not authorized to perform: iam:ListInstanceProfiles
+```
+
+**Cause** : La policy IAM `KarpenterControllerPolicy` ne contient pas les permissions IAM nécessaires.
+
+**Solution** : Ajouter ces permissions à la policy via la Console AWS (section IAM) :
+```json
+{
+  "Sid": "AllowIAMInstanceProfileActions",
+  "Effect": "Allow",
+  "Action": [
+    "iam:ListInstanceProfiles",
+    "iam:GetInstanceProfile"
+  ],
+  "Resource": "*"
+}
+```
+
+Puis redémarrer les pods Karpenter :
+```bash
+kubectl rollout restart deployment karpenter -n karpenter
+```
