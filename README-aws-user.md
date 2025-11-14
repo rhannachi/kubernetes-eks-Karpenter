@@ -178,6 +178,7 @@ Sur ton poste local, crée un fichier `eks-admin-policy.json` avec les permissio
         "ec2:DescribeSubnets",
         "ec2:DescribeTags",
         "ec2:DescribeVpcs",
+        "ec2:DescribeInstanceTypeOfferings",
         "ec2:DetachInternetGateway",
         "ec2:DisassociateRouteTable",
         "ec2:ModifySubnetAttribute",

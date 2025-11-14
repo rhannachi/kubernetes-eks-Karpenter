@@ -11,27 +11,30 @@ vpc:
   cidr: 10.0.0.0/16
 
 iam:
-  # nécessaire pour le Cluster Autoscaler (utilisation d’un ServiceAccount IAM).
+  # Nécessaire pour Karpenter (utilisation d'IRSA - IAM Roles for Service Accounts)
   withOIDC: true
 
 managedNodeGroups:
-  - name: managed-ng-1
+  - name: karpenter-system-nodes
     instanceType: t3.medium
     desiredCapacity: 2
-    minSize: 2 # minSize et maxSize contrôlent la capacité EC2 dynamique
-    maxSize: 5 # minSize et maxSize contrôlent la capacité EC2 dynamique
+    minSize: 2
+    maxSize: 2  # Pas d'autoscaling - ces nodes sont réservés pour Karpenter et les services système
     volumeSize: 40
     iam:
       withAddonPolicies:
         cloudWatch: true
-        autoScaler: true # donne au CA les permissions IAM nécessaires.
+        autoScaler: false  # Désactivé - Karpenter gère le scaling
     labels:
-      role: worker
-
-    # obligatoires pour que le CA identifie le node group.
+      role: system
+      workload-type: system
+    taints:
+      - key: CriticalAddonsOnly
+        value: "true"
+        effect: NoSchedule
     tags:
-      k8s.io/cluster-autoscaler/enabled: "true"
-      k8s.io/cluster-autoscaler/microservices-demo-cluster: "owned"
+      Name: "karpenter-system-node"
+      karpenter.sh/discovery: "microservices-demo-cluster"  # Pour que Karpenter découvre les ressources VPC
 
 addons:
   - name: vpc-cni
