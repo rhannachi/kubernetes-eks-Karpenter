@@ -16,9 +16,13 @@ echo "Account: ${AWS_ACCOUNT_ID}"
 
 ### 1.2 — Créer la policy IAM personnalisée pour Karpenter
 
+> ⚠️ **IMPORTANT** : Cette étape doit être effectuée via la **Console AWS** avec un compte administrateur, car l'utilisateur `eks-user` n'a pas la permission `iam:CreatePolicy`.
+
 ⚠️ **IMPORTANT** : Ne jamais utiliser `AdministratorAccess` pour Karpenter ! Créons une policy avec uniquement les permissions nécessaires.
 
-Crée le fichier `infra/karpenter-controller-policy.json` :
+#### 1 — Préparer le fichier de policy
+
+Sur ton poste local, crée le fichier `infra/karpenter-controller-policy.json` avec les variables remplacées :
 
 ```bash
 cat > infra/karpenter-controller-policy.json << 'EOF'
@@ -131,12 +135,23 @@ sed -i "s/\${AWS_ACCOUNT_ID}/${AWS_ACCOUNT_ID}/g" infra/karpenter-controller-pol
 sed -i "s/\${CLUSTER_NAME}/${CLUSTER_NAME}/g" infra/karpenter-controller-policy.json
 ```
 
-Créer la policy dans AWS :
+#### 2 — Créer la policy dans AWS via la Console
+
+1. Connecte-toi à https://console.aws.amazon.com avec un compte **administrateur**
+2. Va dans **IAM** → **Policies** → **Create policy**
+3. Clique sur l'onglet **JSON**
+4. Copie-colle le contenu du fichier `infra/karpenter-controller-policy.json` dans l'éditeur
+5. Clique sur **Next**
+6. Nom de la policy : `KarpenterControllerPolicy-microservices-demo-cluster`
+7. Description : `IAM policy for Karpenter controller`
+8. Clique sur **Create policy**
+
+#### 3 — Vérifier que la policy est créée
+
+Depuis ton terminal avec l'utilisateur `eks-user`, vérifie que la policy existe :
 
 ```bash
-aws iam create-policy \
-  --policy-name KarpenterControllerPolicy-${CLUSTER_NAME} \
-  --policy-document file://infra/karpenter-controller-policy.json
+aws iam get-policy --policy-arn arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerPolicy-${CLUSTER_NAME}
 ```
 
 ### 1.3 — Créer le Service Account IAM pour Karpenter
@@ -156,6 +171,35 @@ eksctl create iamserviceaccount \
 ### 1.4 — Créer le rôle IAM pour les nodes Karpenter
 
 Ce rôle sera utilisé par les instances EC2 créées par Karpenter.
+
+#### 1 — Vérifier si le rôle existe déjà
+
+```bash
+# Vérifier si le rôle existe
+aws iam get-role --role-name KarpenterNodeRole-${CLUSTER_NAME} 2>/dev/null
+```
+
+**Si le rôle existe déjà** : Vérifiez qu'il a toutes les policies nécessaires avec :
+
+```bash
+aws iam list-attached-role-policies --role-name KarpenterNodeRole-${CLUSTER_NAME}
+```
+
+Vous devriez voir ces 4 policies :
+- AmazonEKSWorkerNodePolicy
+- AmazonEKS_CNI_Policy
+- AmazonEC2ContainerRegistryReadOnly
+- AmazonSSMManagedInstanceCore
+
+Vérifiez aussi l'instance profile :
+
+```bash
+aws iam get-instance-profile --instance-profile-name KarpenterNodeInstanceProfile-${CLUSTER_NAME}
+```
+
+Si tout est correct, **passez directement à l'étape 1.5**. Sinon, continuez ci-dessous.
+
+#### 2 — Créer le rôle (si nécessaire)
 
 ```bash
 # Créer le rôle avec la trust policy
@@ -188,6 +232,16 @@ aws iam add-role-to-instance-profile \
   --instance-profile-name KarpenterNodeInstanceProfile-${CLUSTER_NAME} \
   --role-name KarpenterNodeRole-${CLUSTER_NAME}
 ```
+
+#### 3 — Vérifier la configuration finale
+
+```bash
+# Vérifier que l'instance profile contient le bon rôle
+aws iam get-instance-profile --instance-profile-name KarpenterNodeInstanceProfile-${CLUSTER_NAME} \
+  --query 'InstanceProfile.Roles[0].RoleName' --output text
+```
+
+Le résultat doit être : `KarpenterNodeRole-microservices-demo-cluster`
 
 ### 1.5 — Tagger les sous-réseaux et security groups pour la découverte Karpenter
 
