@@ -2,3 +2,5 @@
 .idea/
 
 infra/karpenter-controller-policy.json
+
+*.csv

@@ -11,10 +11,10 @@ echo ""
 
 # 1️⃣ Vérifier le Service Account Karpenter
 echo "1️⃣  Vérification du Service Account IAM..."
-kubectl get sa karpenter -n kube-system &>/dev/null
+kubectl get sa karpenter -n karpenter &>/dev/null
 if [ $? -eq 0 ]; then
-  echo "   ✅ Service Account 'karpenter' existe dans kube-system"
-  kubectl describe sa karpenter -n kube-system | grep "eks.amazonaws.com/role-arn"
+  echo "   ✅ Service Account 'karpenter' existe dans karpenter"
+  kubectl describe sa karpenter -n karpenter | grep "eks.amazonaws.com/role-arn"
 else
   echo "   ❌ Service Account 'karpenter' n'existe PAS"
   exit 1

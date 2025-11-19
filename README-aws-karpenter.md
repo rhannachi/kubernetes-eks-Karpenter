@@ -331,7 +331,7 @@ export CLUSTER_ENDPOINT=$(aws eks describe-cluster \
   --output text)
 
 # Récupérer l'ARN du rôle IAM du service account
-export KARPENTER_IAM_ROLE_ARN=$(kubectl get sa karpenter -n kube-system \
+export KARPENTER_IAM_ROLE_ARN=$(kubectl get sa karpenter -n karpenter \
   -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}')
 
 echo "Cluster Name: ${CLUSTER_NAME}"
