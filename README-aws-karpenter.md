@@ -127,7 +127,11 @@ cat > infra/karpenter-controller-policy.json << 'EOF'
       "Effect": "Allow",
       "Action": [
         "iam:ListInstanceProfiles",
-        "iam:GetInstanceProfile"
+        "iam:GetInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile"
       ],
       "Resource": "*"
     }
@@ -318,81 +322,117 @@ aws ec2 describe-subnets \
 ### 2.1 — Récupérer les informations du cluster
 
 ```bash
-# Si tu n'as pas encore exporté ces variables
+# Définir les variables d'environnement
 export CLUSTER_NAME="microservices-demo-cluster"
 export AWS_REGION="us-east-1"
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-# Récupérer l'endpoint du cluster
+# Récupérer dynamiquement l'endpoint du cluster
 export CLUSTER_ENDPOINT=$(aws eks describe-cluster \
-  --name ${CLUSTER_NAME} \
-  --region ${AWS_REGION} \
-  --query "cluster.endpoint" \
+  --name "${CLUSTER_NAME}" \
+  --region "${AWS_REGION}" \
+  --query 'cluster.endpoint' \
   --output text)
 
-# Récupérer l'ARN du rôle IAM du service account
+# Récupérer dynamiquement le rôle IAM du service account Karpenter
 export KARPENTER_IAM_ROLE_ARN=$(kubectl get sa karpenter -n karpenter \
   -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}')
 
-echo "Cluster Name: ${CLUSTER_NAME}"
-echo "Region: ${AWS_REGION}"
-echo "Account ID: ${AWS_ACCOUNT_ID}"
-echo "Cluster Endpoint: ${CLUSTER_ENDPOINT}"
-echo "Karpenter IAM Role ARN: ${KARPENTER_IAM_ROLE_ARN}"
+# Vérifier que l'endpoint et le rôle sont correctement récupérés
+if [[ -z "${CLUSTER_ENDPOINT}" || -z "${KARPENTER_IAM_ROLE_ARN}" ]]; then
+  echo "❌ Erreur : Impossible de récupérer l'endpoint du cluster ou le rôle IAM"
+  exit 1
+fi
+
+echo "🔹 Configuration du cluster :"
+echo "  Nom du cluster : ${CLUSTER_NAME}"
+echo "  Région : ${AWS_REGION}"
+echo "  ID du compte : ${AWS_ACCOUNT_ID}"
+echo "  Endpoint du cluster : ${CLUSTER_ENDPOINT}"
+echo "  Rôle IAM Karpenter : ${KARPENTER_IAM_ROLE_ARN}"
 ```
 
 ### 2.2 — Installer Karpenter via Helm
 
+**Étapes préliminaires :**
+- Modification du ServiceAccount existant pour la gestion par Helm
+- Utilisation du rôle IAM créé par eksctl
+
 ```bash
+# Modification du ServiceAccount existant
+kubectl patch serviceaccount karpenter -n karpenter \
+  -p '{"metadata": {"labels": {"app.kubernetes.io/managed-by": "Helm"}, "annotations": {"meta.helm.sh/release-name": "karpenter", "meta.helm.sh/release-namespace": "karpenter"}}}'
+
+# Installation de Karpenter via Helm
 helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
   --version 1.8.2 \
   --namespace karpenter \
-  --create-namespace \
+  --set "serviceAccount.name=karpenter" \
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=${KARPENTER_IAM_ROLE_ARN}" \
   --set "settings.clusterName=${CLUSTER_NAME}" \
   --set "settings.clusterEndpoint=${CLUSTER_ENDPOINT}" \
   --set controller.resources.requests.cpu=500m \
   --set controller.resources.requests.memory=512Mi \
-  --set tolerations[0].key=CriticalAddonsOnly \
-  --set tolerations[0].operator=Exists \
-  --set tolerations[0].effect=NoSchedule \
   --wait
 ```
 
-**Note** : Le toleration permet à Karpenter de s'exécuter sur les nodes système qui ont le taint `CriticalAddonsOnly`.
+**Notes techniques :**
+- Utilisation du ServiceAccount existant créé par eksctl
+- Configuration manuelle de l'endpoint du cluster
+- Réutilisation du rôle IAM pré-existant
 
 ### 2.3 — Vérifier l'installation de Karpenter
 
-```bash
-# Vérifier que les pods Karpenter sont en running
-kubectl get pods -n karpenter
+#### 🔍 Script de vérification automatique
 
-# Tu devrais voir 2 pods en Running
-# NAME                          READY   STATUS    RESTARTS   AGE
-# karpenter-xxxxxxxxxx-xxxxx    1/1     Running   0          2m
-# karpenter-xxxxxxxxxx-xxxxx    1/1     Running   0          2m
+Un script de vérification complet a été créé pour valider l'installation de Karpenter :
+
+```bash
+# Rendre le script exécutable
+chmod +x verify-step2.sh
+
+# Exécuter le script de vérification
+./verify-step2.sh
 ```
 
-Vérifier les CRDs Karpenter :
+#### Vérifications détaillées manuelles
 
+Si vous souhaitez vérifier manuellement, voici quelques commandes utiles :
+
+1. **Statut des pods Karpenter** :
+```bash
+kubectl get pods -n karpenter
+```
+
+2. **Vérification des CRDs** :
 ```bash
 kubectl get crd | grep karpenter
 ```
-
-Tu devrais voir :
+Attendu :
 ```
 ec2nodeclasses.karpenter.k8s.aws
 nodeclaims.karpenter.sh
 nodepools.karpenter.sh
 ```
 
-Vérifier les logs de Karpenter (ne devrait plus contenir d'erreurs `AccessDenied`) :
-
+3. **Logs de Karpenter** :
 ```bash
 kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter --tail=50
 ```
 
-Les logs doivent afficher uniquement des messages `INFO` sur les contrôleurs qui démarrent. Si tu vois encore des erreurs `AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`, vérifie que tu as bien mis à jour le trust policy à l'étape 2.3.
+#### ⚠️ Points de vigilance
+
+- Les logs ne doivent **PAS** contenir d'erreurs `AccessDenied`
+- Tous les pods doivent être en statut `Running`
+- Le déploiement Helm doit être en statut `deployed`
+
+#### 🛠️ Dépannage
+
+Si des erreurs persistent :
+1. Vérifiez les permissions IAM
+2. Confirmez que le cluster EKS est correctement configuré
+3. Consultez les logs détaillés
+4. Référez-vous à la section Troubleshooting de ce document
 
 ---
 
@@ -497,47 +537,3 @@ Tu as maintenant :
 Consulte le fichier principal [README.md](README.md) pour déployer une application et voir Karpenter en action.
 
 ---
-
-## 🔧 Troubleshooting
-
-### Erreur : `AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`
-
-**Symptôme** : Les pods Karpenter sont en `CrashLoopBackOff` et les logs montrent :
-```
-api error AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity
-```
-
-**Cause** : Le service account Karpenter a été créé dans le namespace `kube-system` mais Karpenter tourne dans le namespace `karpenter`. Le trust policy du rôle IAM ne correspond pas au namespace réel.
-
-**Solution** : Mettre à jour le trust policy du rôle IAM via la Console AWS pour changer :
-- De : `"system:serviceaccount:kube-system:karpenter"`
-- À : `"system:serviceaccount:karpenter:karpenter"`
-
-**Prévention** : Créer directement le service account dans le namespace `karpenter` (comme indiqué dans l'étape 1.3 ci-dessus).
-
-### Erreur : `AccessDenied: Not authorized to perform iam:ListInstanceProfiles`
-
-**Symptôme** : Les logs Karpenter montrent des erreurs répétées :
-```
-api error AccessDenied: User: ... is not authorized to perform: iam:ListInstanceProfiles
-```
-
-**Cause** : La policy IAM `KarpenterControllerPolicy` ne contient pas les permissions IAM nécessaires.
-
-**Solution** : Ajouter ces permissions à la policy via la Console AWS (section IAM) :
-```json
-{
-  "Sid": "AllowIAMInstanceProfileActions",
-  "Effect": "Allow",
-  "Action": [
-    "iam:ListInstanceProfiles",
-    "iam:GetInstanceProfile"
-  ],
-  "Resource": "*"
-}
-```
-
-Puis redémarrer les pods Karpenter :
-```bash
-kubectl rollout restart deployment karpenter -n karpenter
-```

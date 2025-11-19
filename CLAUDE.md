@@ -223,3 +223,4 @@ kubectl get events -n karpenter --sort-by=.lastTimestamp
 - The metrics-server is essential for HPA and must be deployed before testing autoscaling
 - AMI IDs must be updated in `karpenter-nodepool.yaml` before deploying NodePool
 - All IAM policy creation must be done via AWS Console with admin account, as `eks-user` lacks `iam:CreatePolicy` permission
+- Tu dois garder les fichiers README à jour pour documenter clairement comment installer et configurer un cluster EKS avec Karpenter. Cette documentation servira de référence pour reproduire l’installation complète.
