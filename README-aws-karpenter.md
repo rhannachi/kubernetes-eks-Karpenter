@@ -1,30 +1,84 @@
 # Installation de Karpenter
 
-## ✅ ÉTAPE 1 : Créer les rôles IAM et la policy sécurisée pour Karpenter
+## 🚀 Prérequis et Préparation
+
+### 📋 Prérequis Système
+
+**Outils Nécessaires** :
+- ✅ AWS CLI (version 2.x recommandée)
+- ✅ kubectl (version 1.23+ recommandée)
+- ✅ eksctl (version 0.214.0+)
+- ✅ Helm (version 3.8+)
+- ✅ Compte AWS avec droits administrateur
+
+**Configuration Minimale Recommandée** :
+- Système d'exploitation : Linux ou macOS
+- Accès Internet stable
+- Authentification AWS configurée
+- Suffisamment de quota EC2 dans la région
+
+### 🔐 Considérations de Sécurité
+
+**Principes de Sécurité** :
+- Utilisez toujours le principe du moindre privilège
+- Évitez d'utiliser des comptes avec `AdministratorAccess`
+- Mettez en place la séparation des rôles
+- Utilisez l'authentification MFA
+
+### 🌐 Préparation de l'Environnement
 
 ### 1.1 — Définir les variables d'environnement
 
 ```bash
-export CLUSTER_NAME="microservices-demo-cluster"
-export AWS_REGION="us-east-1"
+# Variables de configuration du cluster
+export CLUSTER_NAME="microservices-demo-cluster"  # Nom unique et significatif
+export AWS_REGION="us-east-1"                     # Région la plus proche
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-echo "Cluster: ${CLUSTER_NAME}"
-echo "Region: ${AWS_REGION}"
-echo "Account: ${AWS_ACCOUNT_ID}"
+# Vérification de la configuration
+echo "🔹 Configuration initiale :"
+echo "  Nom du Cluster   : ${CLUSTER_NAME}"
+echo "  Région AWS      : ${AWS_REGION}"
+echo "  ID du Compte    : ${AWS_ACCOUNT_ID}"
+
+# Validation de base
+if [[ -z "$CLUSTER_NAME" || -z "$AWS_REGION" || -z "$AWS_ACCOUNT_ID" ]]; then
+    echo "❌ Erreur : Toutes les variables doivent être définies"
+    exit 1
+fi
 ```
 
 ### 1.2 — Créer la policy IAM personnalisée pour Karpenter
 
-> ⚠️ **IMPORTANT** : Cette étape doit être effectuée via la **Console AWS** avec un compte administrateur, car l'utilisateur `eks-user` n'a pas la permission `iam:CreatePolicy`.
+> 🛡️ **POLITIQUE DE SÉCURITÉ**
+> - Utilisez TOUJOURS une politique à minima
+> - Jamais `AdministratorAccess`
+> - Permissions explicites et restreintes
 
-⚠️ **IMPORTANT** : Ne jamais utiliser `AdministratorAccess` pour Karpenter ! Créons une policy avec uniquement les permissions nécessaires.
+⚠️ **IMPORTANT** :
+- Cette étape requiert un compte avec droits administrateur
+- L'utilisateur `eks-user` n'a PAS la permission `iam:CreatePolicy`
+- Connexion via la **Console AWS** obligatoire
 
-#### 1 — Préparer le fichier de policy
+#### 🔒 1 — Préparer la Policy IAM Karpenter
 
-Sur ton poste local, crée le fichier `infra/karpenter-controller-policy.json` avec les variables remplacées :
+**Objectifs de la Policy** :
+- 🎯 Fournir des permissions minimales
+- 🔒 Sécuriser l'accès aux ressources AWS
+- 🚦 Contrôler précisément les actions autorisées
+
+**Bonnes Pratiques** :
+- Utilisez des conditions de restriction
+- Limitez les actions aux ressources nécessaires
+- Auditez régulièrement les permissions
+
+#### Création du Fichier de Policy
 
 ```bash
+# Créer le répertoire infra si non existant
+mkdir -p infra
+
+# Générer le fichier de policy avec des commentaires explicatifs
 cat > infra/karpenter-controller-policy.json << 'EOF'
 {
   "Version": "2012-10-17",
@@ -319,38 +373,70 @@ aws ec2 describe-subnets \
 
 ## ✅ ÉTAPE 2 : Installer Karpenter via Helm
 
-### 2.1 — Récupérer les informations du cluster
+### 2.1 — Préparation de l'Installation Helm Karpenter
+
+#### 🔍 Vérification Préalable
+
+**Checklist avant Installation** :
+- ✅ Cluster EKS existant et opérationnel
+- ✅ Permissions IAM configurées
+- ✅ Helm installé et configuré
+
+#### 🛠 Récupération Dynamique des Informations
 
 ```bash
-# Définir les variables d'environnement
+# 🔐 Définition des variables de configuration
 export CLUSTER_NAME="microservices-demo-cluster"
 export AWS_REGION="us-east-1"
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-# Récupérer dynamiquement l'endpoint du cluster
+# 🌐 Récupération dynamique de l'endpoint du cluster
 export CLUSTER_ENDPOINT=$(aws eks describe-cluster \
   --name "${CLUSTER_NAME}" \
   --region "${AWS_REGION}" \
   --query 'cluster.endpoint' \
   --output text)
 
-# Récupérer dynamiquement le rôle IAM du service account Karpenter
+# 🔑 Récupération dynamique du rôle IAM Karpenter
 export KARPENTER_IAM_ROLE_ARN=$(kubectl get sa karpenter -n karpenter \
   -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}')
 
-# Vérifier que l'endpoint et le rôle sont correctement récupérés
-if [[ -z "${CLUSTER_ENDPOINT}" || -z "${KARPENTER_IAM_ROLE_ARN}" ]]; then
-  echo "❌ Erreur : Impossible de récupérer l'endpoint du cluster ou le rôle IAM"
-  exit 1
+# 🚨 Validation de la configuration
+validate_config() {
+    local ERRORS=0
+
+    if [[ -z "${CLUSTER_ENDPOINT}" ]]; then
+        echo "❌ Erreur : Impossible de récupérer l'endpoint du cluster"
+        ((ERRORS++))
+    fi
+
+    if [[ -z "${KARPENTER_IAM_ROLE_ARN}" ]]; then
+        echo "❌ Erreur : Impossible de récupérer le rôle IAM Karpenter"
+        ((ERRORS++))
+    fi
+
+    return $ERRORS
+}
+
+# Exécution de la validation
+if ! validate_config; then
+    echo "🛑 Configuration invalide. Vérifiez vos paramètres et permissions."
+    exit 1
 fi
 
-echo "🔹 Configuration du cluster :"
-echo "  Nom du cluster : ${CLUSTER_NAME}"
-echo "  Région : ${AWS_REGION}"
-echo "  ID du compte : ${AWS_ACCOUNT_ID}"
-echo "  Endpoint du cluster : ${CLUSTER_ENDPOINT}"
-echo "  Rôle IAM Karpenter : ${KARPENTER_IAM_ROLE_ARN}"
+# 📋 Affichage de la configuration
+echo "🔹 Configuration du Cluster Karpenter :"
+echo "  Nom du Cluster   : ${CLUSTER_NAME}"
+echo "  Région AWS      : ${AWS_REGION}"
+echo "  ID du Compte    : ${AWS_ACCOUNT_ID}"
+echo "  Endpoint Cluster : ${CLUSTER_ENDPOINT}"
+echo "  Rôle IAM        : ${KARPENTER_IAM_ROLE_ARN}"
 ```
+
+**Notes de Sécurité** :
+- 🔒 Le rôle IAM doit avoir des permissions minimales
+- 🚦 Vérifiez les autorisations avant l'installation
+- 🔍 Utilisez toujours des méthodes dynamiques de récupération
 
 ### 2.2 — Installer Karpenter via Helm
 
