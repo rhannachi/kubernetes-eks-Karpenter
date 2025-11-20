@@ -6,7 +6,8 @@
       "Effect": "Allow",
       "Action": [
         "ec2:RunInstances",
-        "ec2:CreateFleet"
+        "ec2:CreateFleet",
+        "ec2:CreateLaunchTemplate"
       ],
       "Resource": [
         "arn:aws:ec2:*:*:launch-template/*",

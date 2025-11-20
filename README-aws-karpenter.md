@@ -463,8 +463,8 @@ kubectl apply -f infra/karpenter-nodepool.yaml
 kubectl get nodepool
 
 # Tu devrais voir
-# NAME      NODECLASS   NODES   READY   AGE
-# default   default     0       True    10s
+# NAME                         NODECLASS                   NODES   READY   AGE
+# microservices-general-ondemand   microservices-general-al2   0       True    10s
 ```
 
 Vérifier l'EC2NodeClass :
@@ -473,21 +473,21 @@ Vérifier l'EC2NodeClass :
 kubectl get ec2nodeclass
 
 # Tu devrais voir
-# NAME      READY   AGE
-# default   True    10s
+# NAME                      READY   AGE
+# microservices-general-al2   True    10s
 ```
 
 Vérifier le statut détaillé :
 
 ```bash
 # Vérifier que l'AMI est prête
-kubectl get ec2nodeclass default -o jsonpath='{.status.conditions[?(@.type=="AMIsReady")]}' | jq
+kubectl get ec2nodeclass microservices-general-al2 -o jsonpath='{.status.conditions[?(@.type=="AMIsReady")]}' | jq
 
 # Voir les détails du NodePool
-kubectl describe nodepool default
+kubectl describe nodepool microservices-general-ondemand
 
 # Voir les détails de l'EC2NodeClass
-kubectl describe ec2nodeclass default
+kubectl describe ec2nodeclass microservices-general-al2
 ```
 
 Si tout est OK, tu devrais voir `Ready: True` pour le NodePool et l'EC2NodeClass.

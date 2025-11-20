@@ -1,7 +1,8 @@
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: default
+  name: microservices-general-ondemand
+  namespace: karpenter
 spec:
   template:
     spec:
@@ -15,7 +16,7 @@ spec:
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
-        name: default
+        name: microservices-general-al2
   limits:
     cpu: "100"
   disruption:
@@ -25,7 +26,8 @@ spec:
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: default
+  name: microservices-general-al2
+  namespace: karpenter
 spec:
   role: "KarpenterNodeRole-microservices-demo-cluster"
   amiFamily: AL2
