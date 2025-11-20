@@ -123,189 +123,19 @@ Pour suivre le principe du moindre privilège, nous allons créer une policy per
 
 #### 1 — Préparer le document de policy
 
-Sur ton poste local, crée un fichier `eks-admin-policy.json` avec les permissions nécessaires :
+Le fichier `./infra/eks-admin-policy.json` contient les permissions nécessaires pour EKS et Karpenter.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "EKSClusterManagement",
-      "Effect": "Allow",
-      "Action": [
-        "eks:*"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "EC2ForEKS",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:AllocateAddress",
-        "ec2:AssociateRouteTable",
-        "ec2:AttachInternetGateway",
-        "ec2:AuthorizeSecurityGroupEgress",
-        "ec2:AuthorizeSecurityGroupIngress",
-        "ec2:CreateInternetGateway",
-        "ec2:CreateNatGateway",
-        "ec2:CreateRoute",
-        "ec2:CreateRouteTable",
-        "ec2:CreateSecurityGroup",
-        "ec2:CreateSubnet",
-        "ec2:CreateTags",
-        "ec2:CreateVpc",
-        "ec2:DeleteInternetGateway",
-        "ec2:DeleteNatGateway",
-        "ec2:DeleteRoute",
-        "ec2:DeleteRouteTable",
-        "ec2:DeleteSecurityGroup",
-        "ec2:DeleteSubnet",
-        "ec2:DeleteTags",
-        "ec2:DeleteVpc",
-        "ec2:DescribeAccountAttributes",
-        "ec2:DescribeAddresses",
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeImages",
-        "ec2:DescribeInstances",
-        "ec2:DescribeInternetGateways",
-        "ec2:DescribeKeyPairs",
-        "ec2:DescribeLaunchTemplates",
-        "ec2:DescribeLaunchTemplateVersions",
-        "ec2:DescribeNatGateways",
-        "ec2:DescribeNetworkInterfaces",
-        "ec2:DescribeRouteTables",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeSubnets",
-        "ec2:DescribeTags",
-        "ec2:DescribeVpcs",
-        "ec2:DescribeInstanceTypeOfferings",
-        "ec2:DetachInternetGateway",
-        "ec2:DisassociateRouteTable",
-        "ec2:ModifySubnetAttribute",
-        "ec2:ModifyVpcAttribute",
-        "ec2:ReleaseAddress",
-        "ec2:RevokeSecurityGroupEgress",
-        "ec2:RevokeSecurityGroupIngress",
-        "ec2:RunInstances",
-        "ec2:TerminateInstances",
-        "ec2:CreateLaunchTemplate",
-        "ec2:DeleteLaunchTemplate"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "IAMForEKS",
-      "Effect": "Allow",
-      "Action": [
-        "iam:CreateRole",
-        "iam:DeleteRole",
-        "iam:GetRole",
-        "iam:ListAttachedRolePolicies",
-        "iam:ListRolePolicies",
-        "iam:PassRole",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:PutRolePolicy",
-        "iam:DeleteRolePolicy",
-        "iam:GetRolePolicy",
-        "iam:CreateOpenIDConnectProvider",
-        "iam:DeleteOpenIDConnectProvider",
-        "iam:GetOpenIDConnectProvider",
-        "iam:TagOpenIDConnectProvider",
-        "iam:ListOpenIDConnectProviders",
-        "iam:CreateInstanceProfile",
-        "iam:DeleteInstanceProfile",
-        "iam:GetInstanceProfile",
-        "iam:AddRoleToInstanceProfile",
-        "iam:RemoveRoleFromInstanceProfile",
-        "iam:TagRole",
-        "iam:TagInstanceProfile"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "CloudFormationForEKS",
-      "Effect": "Allow",
-      "Action": [
-        "cloudformation:CreateStack",
-        "cloudformation:DeleteStack",
-        "cloudformation:DescribeStacks",
-        "cloudformation:DescribeStackEvents",
-        "cloudformation:DescribeStackResource",
-        "cloudformation:DescribeStackResources",
-        "cloudformation:GetTemplate",
-        "cloudformation:ListStacks",
-        "cloudformation:UpdateStack"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "AutoScalingForEKS",
-      "Effect": "Allow",
-      "Action": [
-        "autoscaling:CreateAutoScalingGroup",
-        "autoscaling:CreateLaunchConfiguration",
-        "autoscaling:DeleteAutoScalingGroup",
-        "autoscaling:DeleteLaunchConfiguration",
-        "autoscaling:DescribeAutoScalingGroups",
-        "autoscaling:DescribeLaunchConfigurations",
-        "autoscaling:DescribeScalingActivities",
-        "autoscaling:UpdateAutoScalingGroup",
-        "autoscaling:CreateOrUpdateTags",
-        "autoscaling:DeleteTags"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "SSMForKarpenter",
-      "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameter"
-      ],
-      "Resource": "arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*"
-    },
-    {
-      "Sid": "PricingForKarpenter",
-      "Effect": "Allow",
-      "Action": [
-        "pricing:GetProducts"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "SQSForKarpenter",
-      "Effect": "Allow",
-      "Action": [
-        "sqs:CreateQueue",
-        "sqs:DeleteQueue",
-        "sqs:GetQueueAttributes",
-        "sqs:GetQueueUrl",
-        "sqs:SetQueueAttributes",
-        "sqs:TagQueue"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "EventsForKarpenter",
-      "Effect": "Allow",
-      "Action": [
-        "events:DeleteRule",
-        "events:DescribeRule",
-        "events:PutRule",
-        "events:PutTargets",
-        "events:RemoveTargets"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
+Remplace les variables dans le fichier :
+```shell
+export AWS_REGION="us-east-1"                     # Région la plus proche
+sed -i "s/\${AWS_REGION}/${AWS_REGION}/g" infra/eks-admin-policy.json
 ```
 
 #### 2 — Créer la policy dans AWS via la Console
 
 1. Va dans **IAM** → **Policies** → **Create policy**
 2. Clique sur l'onglet **JSON**
-3. Copie-colle le contenu du fichier `eks-admin-policy.json` (ci-dessus) dans l'éditeur
+3. Copie-colle le contenu du fichier `eks-admin-policy.json` dans l'éditeur
 4. Clique sur **Next**
 5. Nom de la policy : `EKSAdminPolicy`
 6. Description : `Policy for EKS cluster management with Karpenter support`

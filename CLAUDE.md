@@ -199,6 +199,23 @@ Use `./verify-step1.sh` to verify IAM setup before proceeding to Karpenter insta
 - Cause: AMI ID placeholder not replaced in karpenter-nodepool.yaml
 - Solution: Run the sed command to replace `ami-xxxxxxxxx` with actual AMI ID from SSM parameter
 
+**Invalid IAM Action: ec2:DeleteFleet**
+- Cause: `DeleteFleet` n'est pas une action IAM valide pour EC2
+- Solution : Supprimer `ec2:DeleteFleet` de la liste des actions dans la politique IAM
+- Explications :
+  - AWS ne fournit pas d'action IAM directe pour supprimer une flotte EC2
+  - Les flottes EC2 sont généralement gérées via des appels API AWS spécifiques
+  - Pour gérer les flottes, utilisez uniquement les actions valides :
+    - `ec2:DescribeFleets` (pour lister les flottes)
+    - `ec2:CreateFleet` (pour créer des flottes)
+
+### IAM Policy Best Practices
+
+- Toujours vérifier la validité des actions IAM avant de les ajouter à une politique
+- Utiliser la documentation officielle AWS comme référence
+- Tester les politiques IAM avant de les déployer en production
+- Suivre le principe du moindre privilège lors de la définition des permissions
+
 ### Verification Commands
 
 ```bash
