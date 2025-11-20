@@ -494,16 +494,15 @@ Si tout est OK, tu devrais voir `Ready: True` pour le NodePool et l'EC2NodeClass
 
 ---
 
-## ✅ Récapitulatif
+### 3.4 — Vérifier la configuration et l'installation de Karpenter 
 
-Tu as maintenant :
-- ✅ Un cluster EKS avec 2 nodes système
-- ✅ Karpenter installé et configuré avec des **permissions IAM sécurisées**
-- ✅ Un NodePool Karpenter prêt à créer des nodes à la demande
-- ✅ Configuration testée et vérifiée
+#### 🔍 Script de vérification automatique
 
-**Prochaine étape** : Tester le scaling avec une application de test ! 🚀
+```bash
+# Rendre le script exécutable
+chmod +x verify-step3.sh
 
-Consulte le fichier principal [README.md](README.md) pour déployer une application et voir Karpenter en action.
+# Exécuter le script de vérification
+./verify-step3.sh
+```
 
----

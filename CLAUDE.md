@@ -87,33 +87,6 @@ sed -i "s/ami-xxxxxxxxx/${AMI_ID}/g" infra/karpenter-nodepool.yaml
 # Apply configuration
 kubectl apply -f infra/karpenter-nodepool.yaml
 ```
-
-### Testing & Monitoring
-
-```bash
-# Deploy sample application
-kubectl apply -k ./k8s/base
-
-# Deploy load generator (AWS)
-kubectl apply -f ./k8s/utils/test-karpenter-scaling.yaml
-
-# Monitor Karpenter logs
-kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -f
-
-# Real-time cluster monitoring
-./karpenter_cluster_monitor.sh
-
-# Watch cluster scaling
-watch kubectl get nodes
-kubectl get hpa -w
-kubectl get pods -w
-
-# Verify Karpenter resources
-kubectl get nodepool
-kubectl get ec2nodeclass
-kubectl get nodeclaim
-```
-
 ### Metrics Server
 
 ```bash
