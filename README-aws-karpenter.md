@@ -188,6 +188,17 @@ cat > infra/karpenter-controller-policy.json << 'EOF'
         "iam:DeleteInstanceProfile"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AllowInstanceProfileActions",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:TagInstanceProfile",
+        "iam:UntagInstanceProfile"
+      ],
+      "Resource": "*"
     }
   ]
 }
