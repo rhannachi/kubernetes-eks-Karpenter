@@ -62,7 +62,8 @@
         "ec2:DescribeSubnets",
         "ec2:DescribeSpotPriceHistory",
         "ec2:CreateTags",
-        "ec2:DescribeFleets"
+        "ec2:DescribeFleets",
+        "ec2:DeleteFleets"
       ],
       "Resource": "*"
     },

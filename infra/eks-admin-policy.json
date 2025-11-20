@@ -84,6 +84,11 @@
       }
     },
     {
+      "Effect": "Allow",
+      "Action": "ec2:DeleteFleets",
+      "Resource": "*"
+    },
+    {
       "Sid": "IAMForEKS",
       "Effect": "Allow",
       "Action": [

@@ -64,7 +64,7 @@ test_create_fleet() {
 
     # Create a fleet
     FLEET_ID=$(aws ec2 create-fleet \
-        --launch-template-configs "LaunchTemplateSpecification={LaunchTemplateName=$LAUNCH_TEMPLATE_NAME}" \
+        --launch-template-configs "LaunchTemplateSpecification={LaunchTemplateName=$LAUNCH_TEMPLATE_NAME,Version=1}" \
         --target-capacity-specification TotalTargetCapacity=1,DefaultTargetCapacityType=spot \
         --type instant \
         --query 'FleetId' \
@@ -74,7 +74,12 @@ test_create_fleet() {
 
     # Cleanup
     aws ec2 delete-launch-template --launch-template-name "$LAUNCH_TEMPLATE_NAME"
-    aws ec2 delete-fleet --fleet-ids "$FLEET_ID"
+    # Vérifier et supprimer la flotte si possible
+    if aws ec2 describe-fleets --fleet-ids "$FLEET_ID" &>/dev/null; then
+        aws ec2 delete-fleets --fleet-ids "$FLEET_ID" --terminate-instances || warn "Impossible de supprimer la flotte $FLEET_ID"
+    else
+        warn "La flotte $FLEET_ID n'existe plus ou ne peut pas être supprimée"
+    fi
 }
 
 # Test Launch Template Version Creation
