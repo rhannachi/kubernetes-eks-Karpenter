@@ -4,12 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a tutorial project demonstrating Kubernetes autoscaling on AWS EKS using **Karpenter** (v1.8.2). The project is in French and provides step-by-step instructions for setting up an EKS cluster with Karpenter-managed node autoscaling and HPA (Horizontal Pod Autoscaler).
+This is a tutorial project demonstrating Kubernetes autoscaling on AWS EKS using **Karpenter** (v1.8.2) and HPA (Horizontal Pod Autoscaler). The project provides step-by-step instructions (in French) for setting up an EKS cluster with two-level autoscaling: pod-level via HPA and node-level via Karpenter.
 
 **Architecture Pattern:**
-- **Static System Nodes**: 2 t3.medium nodes (managed by EKS) running Karpenter controller, metrics-server, and core services
+- **Static System Nodes**: 2 t3.medium nodes (managed by EKS/eksctl) running Karpenter controller, metrics-server, and core services
 - **Dynamic Application Nodes**: On-demand t3.medium/t3.large nodes (managed by Karpenter) for application workloads
 - **Separation via Taints**: System nodes have `CriticalAddonsOnly=true:NoSchedule` taint to prevent application pods from scheduling on them
+- **Kubernetes Version**: 1.34 (configured in `infra/cluster.yaml`)
+
+## Prerequisites
+
+Before working with this project, ensure you have the following tools installed:
+
+- **AWS CLI** (version 2.x recommended) - for AWS resource management
+- **kubectl** (version 1.23+) - for Kubernetes cluster interaction
+- **eksctl** (version 0.214.0+) - for EKS cluster creation and management
+- **Helm** (version 3.8+) - for Karpenter installation
+- **AWS Account** with appropriate IAM permissions
+
+Verify your setup:
+```bash
+aws --version
+kubectl version --client
+eksctl version
+helm version
+```
 
 ## Key Configuration Variables
 
@@ -19,6 +38,9 @@ These environment variables are used throughout the setup scripts and must be co
 export CLUSTER_NAME="microservices-demo-cluster"
 export AWS_REGION="us-east-1"
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Verify configuration
+echo "Cluster: ${CLUSTER_NAME}, Region: ${AWS_REGION}, Account: ${AWS_ACCOUNT_ID}"
 ```
 
 ## Essential Commands
@@ -138,7 +160,10 @@ This is applied to:
 - Capacity type: on-demand only
 - Instance types: t3.medium, t3.large
 - CPU limit: 100 cores
-- Consolidation: Enabled (1 minute after empty/underutilized)
+- **Consolidation Status**: Currently configured with conservative settings for testing
+  - Default (commented): `WhenEmptyOrUnderutilized` after 1 minute (aggressive consolidation)
+  - Current: `WhenEmpty` after 10 minutes (conservative for stability during testing)
+  - See comments in `infra/karpenter-nodepool.yaml` for switching between modes
 
 **EC2NodeClass**:
 - AMI Family: AL2 (Amazon Linux 2)
@@ -165,6 +190,36 @@ This is applied to:
 2. System nodes fill up → Karpenter provisions new nodes
 3. Load decreases → HPA scales down pods
 4. Nodes underutilized → Karpenter consolidates/removes nodes after 1 minute
+
+## Setup Workflow Overview
+
+The full setup process follows these steps (see detailed French documentation in README-aws-*.md files):
+
+1. **Step 1 (README-aws-user.md)**: Create AWS IAM user and configure CLI
+   - Creates `eks-user` with minimal permissions
+   - Sets up AWS credentials and profile
+
+2. **Step 2 (README-aws-cluster.md)**: Create EKS cluster
+   - Uses `eksctl` to provision cluster from `infra/cluster.yaml`
+   - Creates 2 static system nodes with `CriticalAddonsOnly` taint
+   - Enables OIDC provider for IRSA (required for Karpenter)
+   - Takes 15-20 minutes
+
+3. **Step 3 (README-aws-karpenter.md)**: Install Karpenter and configure node provisioning
+   - **⚠️ Critical**: Create IAM policy via AWS Console with admin account (cli user lacks permission)
+   - Create IRSA service account binding
+   - Install Karpenter via Helm (v1.8.2)
+   - Deploy NodePool and EC2NodeClass configurations
+   - **Must update AMI ID** in `infra/karpenter-nodepool.yaml` before applying
+
+4. **Step 4 (README-aws-karpenter-autoscaling-test.md)**: Deploy demo app and test autoscaling
+   - Deploy php-apache application with HPA
+   - Generate load to test two-level autoscaling
+   - Monitor pod and node scaling behavior
+
+5. **Step 5 (README-aws-cleanup.md)**: Cleanup and resource deletion
+   - Removes cluster, IAM roles, and all AWS resources
+   - Important for cost management
 
 ## Important File Patterns
 
@@ -253,10 +308,52 @@ kubectl top pods
 - OIDC provider enabled for IRSA (secure pod-level IAM authentication)
 - All policy creation requires admin access via AWS Console (documented workflow)
 
+## Key Implementation Details
+
+### Kustomize Structure
+The demo application uses Kustomize for deployment:
+- `k8s/base/kustomization.yaml`: Lists resources (deployment.yaml and hpa.yaml)
+- Deploy using: `kubectl apply -k ./k8s/base`
+- This approach allows easy extension with overlays for different environments
+
+### Metrics Server Dependency
+HPA requires metrics-server to function:
+- Installed as part of the Karpenter setup process (see `infra/metric-server.yaml`)
+- Required for CPU and memory-based autoscaling decisions
+- Monitor with: `kubectl get pods -n kube-system -l k8s-app=metrics-server`
+- Allow 2-3 minutes for metrics to become available after cluster creation
+
+### IAM Policy Requirements vs Permissions
+- **IAM Policy Creation**: Requires AWS Console access with admin account (not delegable to regular users)
+- **IAM Service Account Creation**: Can be done via `eksctl create iamserviceaccount` from CLI
+- **Policy File Format**: JSON files in `infra/` contain placeholder variables (`${AWS_REGION}`, `${AWS_ACCOUNT_ID}`, `${CLUSTER_NAME}`)
+  - These MUST be substituted via `sed` before usage
+  - Example: `sed -i "s/\${CLUSTER_NAME}/${CLUSTER_NAME}/g" infra/karpenter-controller-policy.json`
+
 ## Testing Scenarios
 
 The project is designed to demonstrate:
 1. **HPA scaling**: Pods scale from 1 to 10 replicas under load
 2. **Karpenter node provisioning**: New nodes automatically added when pods are pending
-3. **Node consolidation**: Nodes removed when underutilized (after 1 minute)
-4. **Cost optimization**: On-demand instances, efficient resource packing
+3. **Node consolidation**: Nodes removed when underutilized (depends on consolidation policy)
+4. **Cost optimization**: On-demand instances with efficient resource packing
+
+## Quick Reference: Common Debugging Commands
+
+```bash
+# Check cluster readiness
+kubectl get nodes -o wide
+kubectl get pods -A
+
+# Monitor Karpenter activity
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -f
+
+# Check resource requests on pods (important for HPA)
+kubectl describe pod <pod-name> | grep -A5 "Requests"
+
+# Verify node selection and taints
+kubectl describe node <node-name> | grep -E "Taint|Label"
+
+# Watch autoscaling in real-time
+watch -n 1 'kubectl get hpa && echo "---" && kubectl get nodes'
+```
