@@ -35,17 +35,17 @@ kubectl apply -k ./k8s/overlay/minikube
 ### Générer de la charge CPU
 
 On va utiliser un pod temporaire pour faire des requêtes en boucle sur le service :
+
+[load-generator.yaml](k8s/utils/load-generator.yaml)
+
 ```bash
-kubectl run -it --rm load-generator --image=busybox /bin/sh
+kubectl apply -f k8s/utils/load-generator.yaml
 ```
 
-Puis dans le shell du pod :
+Pour surveiller les logs du générateur de charge :
 ```bash
-# Boucle infinie envoyant des requêtes HTTP au service interne
-while true; do wget -q -O- http://php-apache; done
+kubectl logs load-generator -f
 ```
-
-Laisse tourner pendant 2-3 minutes
 
 ---
 
@@ -76,12 +76,9 @@ Tu verras plusieurs pods créés automatiquement
 
 ### Arrêter la charge
 
-Reviens sur le pod `load-generator` et fais `Ctrl+C`.
-
-Puis quitte le shell :
-
+Pour arrêter et nettoyer :
 ```bash
-exit
+kubectl delete -f k8s/utils/load-generator.yaml
 ```
 
 Tu verras alors le nombre de pods redescendre progressivement :
@@ -100,6 +97,5 @@ php-apache-hpa   Deployment/php-apache   10%/50%   1         10        1   12m
 ### Nettoyage
 
 ```bash
-kubectl delete -k -k ./k8s/overlay/minikube
+kubectl delete -k ./k8s/overlay/minikube
 ```
-

@@ -1,6 +1,6 @@
 # Installation et configuration de Karpenter avec Helm sur un cluster EKS AWS
 
-Avant de passer à la mise en place d’un HPA avec un auto-scaling automatisé grâce à Karpenter sur un cluster EKS AWS, vous pouvez tester un HPA sur Minikube
+Avant de passer à la mise en place d'un HPA avec un auto-scaling automatisé grâce à Karpenter sur un cluster EKS AWS, vous pouvez tester un HPA sur Minikube
 [README-minikube.md](README-minikube.md)
 
 ## étape 1 - Installation AWS CLI, eksctl et configuration d'un utilisateur AWS
@@ -42,19 +42,19 @@ kubectl get hpa php-apache-hpa
 
 ### Tester l'autoscaling avec Karpenter
 
-Pour générer de la charge et observer Karpenter en action :
+[load-generator.yaml](k8s/utils/load-generator.yaml)
 
-1. Ouvrez un terminal pour générer de la charge :
+Déployer le générateur de charge :
 ```shell
-kubectl run -it --rm load-generator --image=busybox /bin/sh
+kubectl apply -f k8s/utils/load-generator.yaml
 ```
 
-2. Dans le shell du load-generator, exécutez :
+Surveiller les logs du générateur :
 ```shell
-while true; do wget -q -O- http://php-apache; done
+kubectl logs load-generator -f
 ```
 
-3. Dans un autre terminal, observez le scaling :
+Dans un autre terminal, observez le scaling :
 ```shell
 # Surveiller les pods
 watch kubectl get pods
@@ -69,18 +69,15 @@ watch kubectl get nodes
 - Le HPA va augmenter le nombre de réplicas jusqu'à 10
 - Les nouveaux noeuds seront de type t3.medium ou t3.large selon la configuration Karpenter
 
-`★ Insight ─────────────────────────────────────`
 - Le scaling avec Karpenter est dynamique et répond rapidement aux besoins de charge
 - Les ressources sont provisionnées de manière optimale, minimisant les ressources inutilisées
-`─────────────────────────────────────────────────`
 
 ### Nettoyage
 
 Pour arrêter le générateur de charge et restaurer l'état initial :
 ```shell
 # Terminer le load-generator
-kubectl delete pod load-generator
+kubectl delete -f k8s/utils/load-generator.yaml
 
 # Attendre que Karpenter récupère les noeuds surnuméraires
 ```
-

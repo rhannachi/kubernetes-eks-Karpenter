@@ -4,213 +4,259 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Kubernetes EKS cluster configuration repository focused on **Karpenter** autoscaling. The project demonstrates how to set up an AWS EKS cluster with Karpenter as the autoscaling solution, replacing traditional Cluster Autoscaler.
+This is a tutorial project demonstrating Kubernetes autoscaling on AWS EKS using **Karpenter** (v1.8.2). The project is in French and provides step-by-step instructions for setting up an EKS cluster with Karpenter-managed node autoscaling and HPA (Horizontal Pod Autoscaler).
 
-**Key architecture decisions:**
-- 2 static system nodes (t3.medium) with `CriticalAddonsOnly` taints to run Karpenter and critical services
-- Karpenter manages dynamic workload nodes (on-demand only: t3.medium, t3.large)
-- IRSA (IAM Roles for Service Accounts) for secure AWS permissions
-- Tag-based resource discovery using `karpenter.sh/discovery`
+**Architecture Pattern:**
+- **Static System Nodes**: 2 t3.medium nodes (managed by EKS) running Karpenter controller, metrics-server, and core services
+- **Dynamic Application Nodes**: On-demand t3.medium/t3.large nodes (managed by Karpenter) for application workloads
+- **Separation via Taints**: System nodes have `CriticalAddonsOnly=true:NoSchedule` taint to prevent application pods from scheduling on them
 
-## Project Structure
+## Key Configuration Variables
 
-```
-.
-├── infra/                    # Infrastructure as Code
-│   ├── cluster.yaml          # eksctl cluster definition
-│   ├── karpenter-nodepool.yaml    # Karpenter NodePool + EC2NodeClass
-│   ├── karpenter-node-trust-policy.json
-│   └── metric-server.yaml
-├── k8s/
-│   ├── base/                 # Sample application (php-apache for HPA demo)
-│   │   ├── deployment.yaml   # PHP application with resource requests/limits
-│   │   ├── hpa.yaml         # HorizontalPodAutoscaler (50% CPU, 1-10 replicas)
-│   │   └── kustomization.yaml
-│   └── utils/               # Testing and utilities
-│       ├── test-karpenter-scaling.yaml    # Load generator for AWS
-│       └── test-minikube-scaling.yaml     # Load generator for minikube
-├── verify-step1.sh          # Verification script for IAM roles and service accounts
-├── karpenter_cluster_monitor.sh  # Real-time cluster monitoring dashboard
-└── cleanup-karpenter.sh     # Cleanup script for Karpenter resources
-```
+These environment variables are used throughout the setup scripts and must be consistent:
 
-## Common Commands
-
-### Cluster Management
-
-```bash
-# Create EKS cluster (15-20 min)
-eksctl create cluster -f ./infra/cluster.yaml
-
-# Update kubeconfig
-aws eks update-kubeconfig --region us-east-1 --name microservices-demo-cluster
-
-# Delete cluster
-eksctl delete cluster --name microservices-demo-cluster --region us-east-1
-```
-
-### Karpenter Installation
-
-Set environment variables first:
 ```bash
 export CLUSTER_NAME="microservices-demo-cluster"
 export AWS_REGION="us-east-1"
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ```
 
-Install via Helm:
+## Essential Commands
+
+### Cluster Management
+
 ```bash
+# Create EKS cluster (15-20 minutes)
+eksctl create cluster -f ./infra/cluster.yaml
+
+# Delete cluster
+eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION}
+
+# Check cluster status
+kubectl get nodes
+kubectl top nodes  # Requires metrics-server
+```
+
+### Karpenter Installation & Management
+
+```bash
+# Install Karpenter via Helm
 helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
   --version 1.8.2 \
   --namespace karpenter \
-  --create-namespace \
+  --set "serviceAccount.name=karpenter" \
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=${KARPENTER_IAM_ROLE_ARN}" \
   --set "settings.clusterName=${CLUSTER_NAME}" \
   --set "settings.clusterEndpoint=${CLUSTER_ENDPOINT}" \
-  --set controller.resources.requests.cpu=500m \
-  --set controller.resources.requests.memory=512Mi \
   --wait
+
+# Deploy NodePool and EC2NodeClass
+kubectl apply -f infra/karpenter-nodepool.yaml
+
+# Check Karpenter status
+kubectl get pods -n karpenter
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter --tail=50
+kubectl get nodepool
+kubectl get ec2nodeclass
 ```
 
-### Deploy NodePool and EC2NodeClass
+### Application Deployment & Testing
 
 ```bash
-# Update AMI ID in the file first
+# Deploy php-apache demo app with HPA
+kubectl apply -k ./k8s/base
+
+# Check deployment
+kubectl get deployment php-apache
+kubectl get hpa php-apache-hpa
+kubectl get pods
+
+# Generate load to test autoscaling
+kubectl run -it --rm load-generator --image=busybox /bin/sh
+# Inside the shell:
+while true; do wget -q -O- http://php-apache; done
+
+# Monitor autoscaling in another terminal
+watch kubectl get pods
+watch kubectl get nodes
+watch kubectl get hpa
+```
+
+### Verification Scripts
+
+```bash
+# Verify Step 1: IAM roles, service accounts, subnet/SG tags
+./scripts/verify-step1.sh
+
+# Verify Step 2: Karpenter installation
+./scripts/verify-step2.sh
+
+# Verify Step 3: NodePool and EC2NodeClass configuration
+./scripts/verify-step3.sh
+```
+
+## Architecture & Infrastructure
+
+### IAM Configuration
+
+**Two Separate IAM Roles:**
+
+1. **Karpenter Controller Role** (IRSA - IAM Role for Service Account):
+   - Created via: `eksctl create iamserviceaccount`
+   - Policy: `KarpenterControllerPolicy-${CLUSTER_NAME}` (see `infra/karpenter-controller-policy.json`)
+   - Used by: Karpenter controller pods to provision/terminate EC2 instances
+   - Attached to: ServiceAccount `karpenter` in namespace `karpenter`
+
+2. **Karpenter Node Role** (EC2 Instance Profile):
+   - Name: `KarpenterNodeRole-${CLUSTER_NAME}`
+   - Trust policy: `infra/karpenter-node-trust-policy.json`
+   - Policies: AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly, AmazonSSMManagedInstanceCore
+   - Used by: EC2 instances launched by Karpenter to join the cluster
+
+**User IAM Configuration:**
+- Group: `eks-user-group`
+- Custom policy: `EKSAdminPolicy` (see `infra/eks-admin-policy.json`)
+- Follows least-privilege principle for EKS/Karpenter operations
+
+### Resource Discovery Pattern
+
+Karpenter discovers AWS resources (subnets, security groups) via tags:
+
+```bash
+# Tag format
+karpenter.sh/discovery: ${CLUSTER_NAME}
+```
+
+This is applied to:
+- All cluster subnets
+- Cluster security group
+
+### Karpenter Configuration
+
+**NodePool** (`infra/karpenter-nodepool.yaml`):
+- Name: `microservices-general-ondemand`
+- Capacity type: on-demand only
+- Instance types: t3.medium, t3.large
+- CPU limit: 100 cores
+- Consolidation: Enabled (1 minute after empty/underutilized)
+
+**EC2NodeClass**:
+- AMI Family: AL2 (Amazon Linux 2)
+- AMI ID must be updated before deployment (see step 3.1 in README-aws-karpenter.md)
+- Role: References `KarpenterNodeRole-${CLUSTER_NAME}`
+- Subnet/SG discovery: Via `karpenter.sh/discovery` tags
+
+### Demo Application
+
+**php-apache Deployment** (`k8s/base/deployment.yaml`):
+- Image: `k8s.gcr.io/hpa-example`
+- Resources:
+  - CPU request: 200m (base for HPA calculation)
+  - CPU limit: 500m
+- Tolerations: Can run on system nodes (for demo purposes)
+
+**HPA Configuration** (`k8s/base/hpa.yaml`):
+- Min replicas: 1
+- Max replicas: 10
+- Target: 50% CPU utilization (of the 200m request)
+
+**Expected Behavior:**
+1. Load increases → HPA scales pods to max 10 replicas
+2. System nodes fill up → Karpenter provisions new nodes
+3. Load decreases → HPA scales down pods
+4. Nodes underutilized → Karpenter consolidates/removes nodes after 1 minute
+
+## Important File Patterns
+
+- `infra/*.yaml`: EKS cluster and Karpenter resource definitions
+- `infra/*.json`: IAM policy documents (require variable substitution with `sed`)
+- `k8s/base/*.yaml`: Demo application manifests
+- `scripts/verify-step*.sh`: Validation scripts for each setup phase
+- `README-aws-*.md`: Step-by-step French tutorial documentation
+
+## Common Workflows
+
+### Updating AMI for Karpenter Nodes
+
+```bash
+# Get latest EKS-optimized AMI (Kubernetes 1.34)
 AMI_ID=$(aws ssm get-parameter \
   --name /aws/service/eks/optimized-ami/1.34/amazon-linux-2/recommended/image_id \
   --region ${AWS_REGION} \
   --query 'Parameter.Value' \
   --output text)
 
+# Update NodePool configuration
 sed -i "s/ami-xxxxxxxxx/${AMI_ID}/g" infra/karpenter-nodepool.yaml
 
-# Apply configuration
+# Apply changes
 kubectl apply -f infra/karpenter-nodepool.yaml
 ```
-### Metrics Server
+
+### Updating IAM Policy Variables
+
+All IAM policy JSON files contain placeholder variables that must be substituted:
 
 ```bash
-# Deploy metrics-server
-kubectl apply -f infra/metric-server.yaml
+# For eks-admin-policy.json
+sed -i "s/\${AWS_REGION}/${AWS_REGION}/g" infra/eks-admin-policy.json
 
-# Verify metrics are available
-kubectl top nodes
-kubectl top pods -A
+# For karpenter-controller-policy.json
+sed -i "s/\${AWS_REGION}/${AWS_REGION}/g" infra/karpenter-controller-policy.json
+sed -i "s/\${AWS_ACCOUNT_ID}/${AWS_ACCOUNT_ID}/g" infra/karpenter-controller-policy.json
+sed -i "s/\${CLUSTER_NAME}/${CLUSTER_NAME}/g" infra/karpenter-controller-policy.json
 ```
 
-## Architecture Details
-
-### IAM Roles and Permissions
-
-The setup requires three IAM components:
-
-1. **Karpenter Controller Role** (IRSA):
-   - Policy: `KarpenterControllerPolicy-${CLUSTER_NAME}` (custom policy with least privilege)
-   - Service Account: `karpenter` in namespace `karpenter`
-   - Permissions: EC2 instance management, SSM parameter read, pricing API, SQS for interruption handling
-
-2. **Karpenter Node Role**:
-   - Role: `KarpenterNodeRole-${CLUSTER_NAME}`
-   - Instance Profile: `KarpenterNodeInstanceProfile-${CLUSTER_NAME}`
-   - Policies: AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly, AmazonSSMManagedInstanceCore
-
-3. **EKS User** (for CLI operations):
-   - User: `eks-user`
-   - Group: `eks-user-group`
-   - Custom policy: `EKSAdminPolicy` with permissions for EKS, EC2, IAM, CloudFormation, etc.
-
-### Resource Tagging
-
-All subnets and security groups must be tagged for Karpenter discovery:
-```bash
-# Tag subnets
-aws ec2 create-tags \
-  --resources <subnet-id> \
-  --tags Key=karpenter.sh/discovery,Value=${CLUSTER_NAME}
-
-# Tag security group
-aws ec2 create-tags \
-  --resources <sg-id> \
-  --tags Key=karpenter.sh/discovery,Value=${CLUSTER_NAME}
-```
-
-### Karpenter NodePool Configuration
-
-- **Capacity type**: On-demand only (no spot instances)
-- **Instance types**: t3.medium, t3.large
-- **CPU limit**: 100 cores total
-- **Disruption policy**: WhenEmptyOrUnderutilized with 1-minute consolidation delay
-- **AMI**: AL2 (Amazon Linux 2) family, ID must be updated in `karpenter-nodepool.yaml`
-
-### System Node Taints
-
-System nodes have the taint `CriticalAddonsOnly=true:NoSchedule` to prevent application workloads from scheduling there. Karpenter pods include a toleration for this taint in the Helm installation.
-
-## Sequential Setup Guide
-
-The repository follows a 3-step setup process:
-
-1. **Step 1** (README-aws-user.md): AWS user setup with IAM permissions
-2. **Step 2** (README-aws-cluster.md): EKS cluster creation and metrics-server deployment
-3. **Step 3** (README-aws-karpenter.md): Karpenter IAM roles, installation, and NodePool configuration
-
-Use `./verify-step1.sh` to verify IAM setup before proceeding to Karpenter installation.
-
-## Troubleshooting
-
-### Common Issues
-
-**AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity**
-- Cause: Service account namespace mismatch in IAM trust policy
-- Solution: Ensure service account is created in the `karpenter` namespace and trust policy references `system:serviceaccount:karpenter:karpenter`
-
-**AccessDenied: iam:ListInstanceProfiles**
-- Cause: Missing IAM permissions in KarpenterControllerPolicy
-- Solution: Add `iam:ListInstanceProfiles` and `iam:GetInstanceProfile` permissions
-
-**AMI not found**
-- Cause: AMI ID placeholder not replaced in karpenter-nodepool.yaml
-- Solution: Run the sed command to replace `ami-xxxxxxxxx` with actual AMI ID from SSM parameter
-
-**Invalid IAM Action: ec2:DeleteFleet**
-- Cause: `DeleteFleet` n'est pas une action IAM valide pour EC2
-- Solution : Supprimer `ec2:DeleteFleet` de la liste des actions dans la politique IAM
-- Explications :
-  - AWS ne fournit pas d'action IAM directe pour supprimer une flotte EC2
-  - Les flottes EC2 sont généralement gérées via des appels API AWS spécifiques
-  - Pour gérer les flottes, utilisez uniquement les actions valides :
-    - `ec2:DescribeFleets` (pour lister les flottes)
-    - `ec2:CreateFleet` (pour créer des flottes)
-
-### IAM Policy Best Practices
-
-- Toujours vérifier la validité des actions IAM avant de les ajouter à une politique
-- Utiliser la documentation officielle AWS comme référence
-- Tester les politiques IAM avant de les déployer en production
-- Suivre le principe du moindre privilège lors de la définition des permissions
-
-### Verification Commands
+### Troubleshooting Karpenter Issues
 
 ```bash
-# Check Karpenter pod status
-kubectl get pods -n karpenter
+# Check Karpenter controller logs
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter --tail=100
 
-# Check CRDs
-kubectl get crd | grep karpenter
+# Common issues to look for:
+# - AccessDenied errors → Check IAM roles and policies
+# - AMI not found → Update AMI ID in karpenter-nodepool.yaml
+# - Subnet/SG not found → Verify karpenter.sh/discovery tags
+# - Node join failures → Check KarpenterNodeRole policies
 
-# Check NodePool/EC2NodeClass status
+# Verify ServiceAccount IAM role annotation
+kubectl get sa karpenter -n karpenter -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}'
+
+# Check NodePool status
 kubectl describe nodepool microservices-general-ondemand
-kubectl describe ec2nodeclass microservices-general-al2
 
-# View recent events
-kubectl get events -n karpenter --sort-by=.lastTimestamp
+# Check EC2NodeClass status
+kubectl describe ec2nodeclass microservices-general-al2
 ```
 
-## Important Notes
+### Debugging HPA Issues
 
-- Never use `AdministratorAccess` for Karpenter - always use the custom least-privilege policy
-- Karpenter requires OIDC to be enabled on the EKS cluster for IRSA
-- The metrics-server is essential for HPA and must be deployed before testing autoscaling
-- AMI IDs must be updated in `karpenter-nodepool.yaml` before deploying NodePool
-- All IAM policy creation must be done via AWS Console with admin account, as `eks-user` lacks `iam:CreatePolicy` permission
-- Tu dois garder les fichiers README à jour pour documenter clairement comment installer et configurer un cluster EKS avec Karpenter. Cette documentation servira de référence pour reproduire l'installation complète.
+```bash
+# Check HPA status and events
+kubectl describe hpa php-apache-hpa
+
+# Verify metrics-server is running
+kubectl get pods -n kube-system -l k8s-app=metrics-server
+kubectl top pods
+
+# Common issues:
+# - "unable to get metrics" → metrics-server not ready (wait 2-3 minutes)
+# - HPA shows <unknown> → Check pod resource requests are defined
+# - Pods not scaling → Verify CPU utilization exceeds 50% threshold
+```
+
+## Security Considerations
+
+- **Never use AdministratorAccess** for the IAM user
+- IAM policies follow least-privilege principle
+- System nodes are tainted to prevent application workload interference
+- OIDC provider enabled for IRSA (secure pod-level IAM authentication)
+- All policy creation requires admin access via AWS Console (documented workflow)
+
+## Testing Scenarios
+
+The project is designed to demonstrate:
+1. **HPA scaling**: Pods scale from 1 to 10 replicas under load
+2. **Karpenter node provisioning**: New nodes automatically added when pods are pending
+3. **Node consolidation**: Nodes removed when underutilized (after 1 minute)
+4. **Cost optimization**: On-demand instances, efficient resource packing
