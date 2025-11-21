@@ -1,0 +1,25 @@
+{
+  "model": "haiku",
+  "##model": "claude-3-haiku-20240307",
+  "#model": "claude-3-5-haiku-20241022",
+  "outputStyle": "Explanatory",
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Write(*.tf, *.yaml, *.yml, Dockerfile*, *.sh, *.py, *.md)",
+      "Edit(*.tf, *.yaml, *.yml, Dockerfile*, *.sh, *.py, *.md)",
+      "Bash",
+      "Task(*)"
+    ],
+    "deny": []
+  },
+  "env": {
+    "EDITOR": "nano",
+    "LANG": "fr_FR.UTF-8",
+    "CLUSTER_NAME": "microservices-demo-cluster",
+    "AWS_REGION": "us-east-1",
+    "AWS_ACCOUNT_ID": "$(aws sts get-caller-identity --query Account --output text)",
+    "KARPENTER_VERSION": "1.8.2",
+    "K8S_VERSION": "1.34"
+  }
+}
