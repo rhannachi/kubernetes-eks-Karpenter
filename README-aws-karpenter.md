@@ -202,25 +202,64 @@ Le résultat doit être : `KarpenterNodeRole-microservices-demo-cluster`
 Karpenter utilise ces tags pour découvrir automatiquement les ressources réseau.
 
 ```bash
-# Tagger tous les sous-réseaux du cluster
-aws ec2 describe-subnets \
-  --filters "Name=tag:Name,Values=*${CLUSTER_NAME}*" \
-  --query 'Subnets[*].SubnetId' \
-  --output text | tr '\t' '\n' | while read subnet; do
-    aws ec2 create-tags \
-      --resources $subnet \
-      --tags Key=karpenter.sh/discovery,Value=${CLUSTER_NAME}
-    echo "Tagged subnet: $subnet"
-done
-
-# Tagger le security group du cluster
-aws eks describe-cluster \
+# Récupérer les sous-réseaux du cluster via l'API EKS
+SUBNET_IDS=$(aws eks describe-cluster \
   --name ${CLUSTER_NAME} \
   --region ${AWS_REGION} \
-  --query "cluster.resourcesVpcConfig.clusterSecurityGroupId" \
-  --output text | xargs -I {} aws ec2 create-tags \
-    --resources {} \
-    --tags Key=karpenter.sh/discovery,Value=${CLUSTER_NAME}
+  --query 'cluster.resourcesVpcConfig.subnetIds' \
+  --output text)
+
+# Vérifier que des sous-réseaux ont été trouvés
+if [[ -z "$SUBNET_IDS" ]]; then
+    echo "❌ Erreur : Aucun sous-réseau trouvé pour le cluster ${CLUSTER_NAME}"
+    exit 1
+fi
+
+# Tagger les sous-réseaux pour Karpenter et EKS
+for subnet in $SUBNET_IDS; do
+    aws ec2 create-tags \
+        --resources $subnet \
+        --region ${AWS_REGION} \
+        --tags \
+            Key=karpenter.sh/discovery,Value=${CLUSTER_NAME} \
+            Key=eks:cluster-name,Value=${CLUSTER_NAME}
+    echo "🏷️ Sous-réseau taggué : $subnet"
+done
+
+# Vérifier que les tags ont été appliqués
+TAGGED_SUBNETS=$(aws ec2 describe-subnets \
+    --filters \
+        "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" \
+        "Name=tag:eks:cluster-name,Values=${CLUSTER_NAME}" \
+    --query 'Subnets[*].SubnetId' \
+    --output text)
+
+if [[ -z "$TAGGED_SUBNETS" ]]; then
+    echo "❌ Erreur : Le tagging des sous-réseaux a échoué"
+    exit 1
+fi
+
+# Tagger le security group du cluster
+CLUSTER_SG=$(aws eks describe-cluster \
+    --name ${CLUSTER_NAME} \
+    --region ${AWS_REGION} \
+    --query "cluster.resourcesVpcConfig.clusterSecurityGroupId" \
+    --output text)
+
+if [[ -n "$CLUSTER_SG" ]]; then
+    aws ec2 create-tags \
+        --resources $CLUSTER_SG \
+        --region ${AWS_REGION} \
+        --tags \
+            Key=karpenter.sh/discovery,Value=${CLUSTER_NAME} \
+            Key=eks:cluster-name,Value=${CLUSTER_NAME}
+    echo "🏷️ Security group taggué : $CLUSTER_SG"
+else
+    echo "❌ Erreur : Impossible de trouver le security group du cluster"
+    exit 1
+fi
+
+echo "✅ Tagging des ressources réseau terminé avec succès"
 ```
 
 ### 1.6 — Vérification de l'ÉTAPE 1

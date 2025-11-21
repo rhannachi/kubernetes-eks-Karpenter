@@ -75,31 +75,70 @@ echo ""
 
 # 5️⃣ Vérifier les tags des sous-réseaux
 echo "5️⃣  Vérification des tags sur les sous-réseaux..."
+# Récupérer les sous-réseaux du cluster via l'API EKS
+CLUSTER_SUBNETS=$(aws eks describe-cluster \
+  --name ${CLUSTER_NAME} \
+  --region ${AWS_REGION} \
+  --query 'cluster.resourcesVpcConfig.subnetIds' \
+  --output text)
+
+# Vérifier les tags des sous-réseaux
 TAGGED_SUBNETS=$(aws ec2 describe-subnets \
-  --filters "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" \
+  --filters \
+    "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" \
+    "Name=tag:eks:cluster-name,Values=${CLUSTER_NAME}" \
   --query 'Subnets[*].SubnetId' \
   --output text)
 
-if [ -n "$TAGGED_SUBNETS" ]; then
-  echo "   ✅ Sous-réseaux taggés trouvés:"
-  echo "   $TAGGED_SUBNETS"
+TOTAL_CLUSTER_SUBNETS=$(echo "$CLUSTER_SUBNETS" | tr ' ' '\n' | grep -v '^$' | wc -l)
+TOTAL_TAGGED_SUBNETS=$(echo "$TAGGED_SUBNETS" | tr ' ' '\n' | grep -v '^$' | wc -l)
+
+if [ "$TOTAL_CLUSTER_SUBNETS" -eq "$TOTAL_TAGGED_SUBNETS" ]; then
+  echo "   ✅ Tous les $TOTAL_CLUSTER_SUBNETS sous-réseaux sont taggués correctement"
+  echo "   Sous-réseaux taggués : $TAGGED_SUBNETS"
+
+  # Afficher les détails des tags pour chaque sous-réseau
+  echo "   Détails des tags :"
+  for subnet in $TAGGED_SUBNETS; do
+    echo "   Subnet $subnet :"
+    aws ec2 describe-subnets \
+      --subnet-ids $subnet \
+      --query 'Subnets[*].{ID:SubnetId, AZ:AvailabilityZone, Tags:Tags}' \
+      --output table
+  done
 else
-  echo "   ❌ AUCUN sous-réseau taggé avec karpenter.sh/discovery=${CLUSTER_NAME}"
+  echo "   ❌ Seulement $TOTAL_TAGGED_SUBNETS sur $TOTAL_CLUSTER_SUBNETS sous-réseaux sont taggués"
+  echo "   Sous-réseaux du cluster : $CLUSTER_SUBNETS"
+  echo "   Sous-réseaux taggués : $TAGGED_SUBNETS"
   exit 1
 fi
 echo ""
 
 # 6️⃣ Vérifier les tags du security group
 echo "6️⃣  Vérification des tags sur le security group..."
+CLUSTER_SG=$(aws eks describe-cluster \
+  --name ${CLUSTER_NAME} \
+  --region ${AWS_REGION} \
+  --query "cluster.resourcesVpcConfig.clusterSecurityGroupId" \
+  --output text)
+
 TAGGED_SG=$(aws ec2 describe-security-groups \
-  --filters "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" \
+  --filters \
+    "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" \
+    "Name=tag:eks:cluster-name,Values=${CLUSTER_NAME}" \
   --query 'SecurityGroups[*].GroupId' \
   --output text)
 
-if [ -n "$TAGGED_SG" ]; then
-  echo "   ✅ Security group taggé trouvé: $TAGGED_SG"
+if [ "$CLUSTER_SG" = "$TAGGED_SG" ]; then
+  echo "   ✅ Security group du cluster correctement taggué : $TAGGED_SG"
+  echo "   Détails du security group :"
+  aws ec2 describe-security-groups \
+    --group-ids $TAGGED_SG \
+    --query 'SecurityGroups[*].{Name:GroupName, Description:Description, VPC:VpcId}'
 else
-  echo "   ❌ AUCUN security group taggé avec karpenter.sh/discovery=${CLUSTER_NAME}"
+  echo "   ❌ Le security group du cluster n'est PAS taggué correctement"
+  echo "   Security group du cluster : $CLUSTER_SG"
+  echo "   Security group taggué : $TAGGED_SG"
   exit 1
 fi
 echo ""
