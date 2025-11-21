@@ -12,10 +12,42 @@ spec:
     - /bin/sh
     - -c
     - |
-      echo "🚀 Démarrage du générateur de charge pour php-apache"
-      echo "🕒 Génération de charge continue sur http://php-apache"
-      while true; do
-        wget -q -O- http://php-apache
-        sleep 1
+      echo "🚀 Démarrage du générateur de charge INTENSIVE pour php-apache"
+      echo "⚡ 100+ requêtes HTTP simultanées en CONTINU"
+      echo ""
+
+      # Lancer 100 boucles infinies de requêtes wget SANS INTERRUPTION
+      # Chaque boucle génère des requêtes continues vers php-apache
+      for i in $(seq 1 100); do
+        (
+          while true; do
+            wget -q -O- http://php-apache > /dev/null 2>&1
+            # Pas de délai - générer autant que possible
+          done
+        ) &
       done
-  restartPolicy: OnFailure
+
+      # AUSSI générer de la charge CPU pure (pour remplir rapidement les CPU)
+      # Cela force HPA à scaler plus vite
+      for i in $(seq 1 4); do
+        (
+          while true; do
+            # Boucle tight pour utiliser 100% CPU
+            :
+          done
+        ) &
+      done
+
+      echo "✅ Générateur actif: 100 requêtes HTTP concurrentes + charge CPU"
+      echo "📊 Accédez au pod pour voir les logs: kubectl logs load-generator -f"
+
+      # Attendre infiniment
+      wait
+  restartPolicy: Always  # Redémarrage automatique en cas de crash
+  resources:
+    limits:
+      cpu: "2"        # Peut utiliser jusqu'à 2 CPU
+      memory: 512Mi
+    requests:
+      cpu: "600m"     # 600m requests = assez pour s'exécuter sur nodes existants
+      memory: 256Mi   # Assez pour générer de la charge HTTP/CPU
