@@ -12,6 +12,8 @@ spec:
       labels:
         app: php-apache
     spec:
+      tolerations:
+      - operator: "Exists"  # Tolère tous les taints
       containers:
         - name: php-apache
           image: k8s.gcr.io/hpa-example

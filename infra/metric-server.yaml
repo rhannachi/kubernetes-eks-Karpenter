@@ -64,6 +64,9 @@ spec:
         k8s-app: metrics-server
     spec:
       serviceAccountName: metrics-server
+      # Ajouter des tolérances pour tous les taints
+      tolerations:
+      - operator: "Exists"  # Tolère tous les taints
       containers:
         - name: metrics-server
           image: registry.k8s.io/metrics-server/metrics-server:v0.7.2
