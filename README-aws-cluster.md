@@ -14,7 +14,7 @@ Ce cluster EKS est configuré pour utiliser **Karpenter** comme solution de scal
 
 ### Créer le cluster EKS
 
-Le fichier `infra/cluster.yaml` définit :
+Le fichier [cluster.yaml](infra/cluster.yaml) définit :
 - **Node group système** : 2 nodes t3.medium fixes (pas d'autoscaling)
 - **Taints** : Les nodes système ont un taint `CriticalAddonsOnly` pour réserver leur capacité aux services critiques
 - **Tags Karpenter** : Tag `karpenter.sh/discovery` pour que Karpenter découvre le VPC et les security groups
@@ -88,7 +88,7 @@ kubectl delete service metrics-server -n kube-system
 
 ### Déployer notre configuration personnalisée
 
-Notre configuration inclut les paramètres nécessaires pour EKS :
+Notre configuration inclut les paramètres nécessaires pour EKS [metric-server.yaml](infra/metric-server.yaml):
 
 ```bash
 kubectl apply -f infra/metric-server.yaml
@@ -121,11 +121,4 @@ Si tu obtiens des métriques (et pas d'erreur), tout est bon ! ✅
 ---
 
 ## ✅ Récapitulatif
-
-Tu as maintenant :
-- ✅ Un cluster EKS avec 2 nodes système
-- ✅ OIDC activé pour Karpenter
-- ✅ Metrics-server fonctionnel pour le HPA
-- ✅ Tags et configuration compatibles avec Karpenter
-
-**Prochaine étape** : Installation et configuration de Karpenter → [README-aws-karpenter.md](README-aws-karpenter.md) 🚀
+TODO

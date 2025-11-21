@@ -123,7 +123,7 @@ Pour suivre le principe du moindre privilège, nous allons créer une policy per
 
 #### 1 — Préparer le document de policy
 
-Le fichier `./infra/eks-admin-policy.json` contient les permissions nécessaires pour EKS et Karpenter.
+Le fichier [eks-admin-policy.json](infra/eks-admin-policy.json) contient les permissions nécessaires pour EKS et Karpenter.
 
 Remplace les variables dans le fichier :
 ```shell
@@ -135,7 +135,7 @@ sed -i "s/\${AWS_REGION}/${AWS_REGION}/g" infra/eks-admin-policy.json
 
 1. Va dans **IAM** → **Policies** → **Create policy**
 2. Clique sur l'onglet **JSON**
-3. Copie-colle le contenu du fichier `eks-admin-policy.json` dans l'éditeur
+3. Copie-colle le contenu du fichier [eks-admin-policy.json](infra/eks-admin-policy.json) dans l'éditeur
 4. Clique sur **Next**
 5. Nom de la policy : `EKSAdminPolicy`
 6. Description : `Policy for EKS cluster management with Karpenter support`
@@ -192,16 +192,4 @@ Si tout est bon, la commande doit retourner une liste des add-ons EKS disponible
 ---
 
 ## ✅ Récapitulatif
-
-Tu as maintenant :
-- ✅ Un utilisateur IAM `eks-user` avec des clés d'accès
-- ✅ Un groupe IAM `eks-user-group` avec des permissions sécurisées
-- ✅ Une policy personnalisée `EKSAdminPolicy` suivant le principe du moindre privilège
-- ✅ 5 policies attachées au groupe :
-  1. `EKSAdminPolicy` (personnalisée - gestion EKS + Karpenter)
-  2. `AmazonEKSClusterPolicy` (control plane EKS)
-  3. `AmazonEKSWorkerNodePolicy` (worker nodes)
-  4. `AmazonEC2ContainerRegistryReadOnly` (pull images Docker)
-  5. `IAMReadOnlyAccess` (consultation IAM)
-- ✅ Les permissions nécessaires pour créer et gérer un cluster EKS avec Karpenter
-
+TODO

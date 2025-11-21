@@ -1,4 +1,4 @@
-# Installation de Karpenter
+# Installation de Karpenter EKS AWS
 
 ## 🚀 Prérequis et Préparation
 
@@ -10,12 +10,6 @@
 - ✅ eksctl (version 0.214.0+)
 - ✅ Helm (version 3.8+)
 - ✅ Compte AWS avec droits administrateur
-
-**Configuration Minimale Recommandée** :
-- Système d'exploitation : Linux ou macOS
-- Accès Internet stable
-- Authentification AWS configurée
-- Suffisamment de quota EC2 dans la région
 
 ### 🔐 Considérations de Sécurité
 
@@ -73,6 +67,7 @@ fi
 - Auditez régulièrement les permissions
 
 #### Création du Fichier de Policy
+Lien vers le fichier : [karpenter-controller-policy.json](infra/karpenter-controller-policy.json)
 
 ```bash
 cat infra/karpenter-controller-policy.json
@@ -91,7 +86,7 @@ sed -i "s/\${CLUSTER_NAME}/${CLUSTER_NAME}/g" infra/karpenter-controller-policy.
 1. Connecte-toi à https://console.aws.amazon.com avec un compte **administrateur**
 2. Va dans **IAM** → **Policies** → **Create policy**
 3. Clique sur l'onglet **JSON**
-4. Copie-colle le contenu du fichier `infra/karpenter-controller-policy.json` dans l'éditeur
+4. Copie-colle le contenu du fichier [karpenter-controller-policy.json](infra/karpenter-controller-policy.json) dans l'éditeur
 5. Clique sur **Next**
 6. Nom de la policy : `KarpenterControllerPolicy-microservices-demo-cluster`
 7. Description : `IAM policy for Karpenter controller`
@@ -157,6 +152,8 @@ aws iam get-instance-profile --instance-profile-name KarpenterNodeInstanceProfil
 Si tout est correct, **passez directement à l'étape 1.5**. Sinon, continuez ci-dessous.
 
 #### 2 — Créer le rôle (si nécessaire)
+
+Le role `KarpenterNodeRole-${CLUSTER_NAME}`  va etre crée avec ce fichier : [karpenter-node-trust-policy.json](infra/karpenter-node-trust-policy.json)
 
 ```bash
 # Créer le rôle avec la trust policy
@@ -228,10 +225,10 @@ aws eks describe-cluster \
 
 ### 1.6 — Vérification de l'ÉTAPE 1
 
-Vérifie que tout est bien configuré avec le script de vérification :
+Vérifie que tout est bien configuré avec le script de vérification [verify-step1.sh](scripts/verify-step1.sh):
 
 ```bash
-./verify-step1.sh
+./scripts/verify-step1.sh
 ```
 
 Ou vérifie manuellement :
@@ -355,14 +352,14 @@ helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
 
 #### 🔍 Script de vérification automatique
 
-Un script de vérification complet a été créé pour valider l'installation de Karpenter :
+Un script de vérification complet a été créé pour valider l'installation de Karpenter [verify-step2.sh](scripts/verify-step2.sh):
 
 ```bash
 # Rendre le script exécutable
-chmod +x verify-step2.sh
+chmod +x ./scripts/verify-step2.sh
 
 # Exécuter le script de vérification
-./verify-step2.sh
+./scripts/verify-step2.sh
 ```
 
 #### Vérifications détaillées manuelles
@@ -438,7 +435,7 @@ echo "AMI ID optimisée EKS: ${AMI_ID}"
 
 ### 3.2 — Mettre à jour le fichier karpenter-nodepool.yaml
 
-Ouvre le fichier `infra/karpenter-nodepool.yaml` et remplace l'AMI ID :
+Ouvre le fichier [karpenter-nodepool.yaml](infra/karpenter-nodepool.yaml) et remplace l'AMI ID :
 
 ```bash
 sed -i "s/ami-xxxxxxxxx/${AMI_ID}/g" infra/karpenter-nodepool.yaml
@@ -497,12 +494,23 @@ Si tout est OK, tu devrais voir `Ready: True` pour le NodePool et l'EC2NodeClass
 ### 3.4 — Vérifier la configuration et l'installation de Karpenter 
 
 #### 🔍 Script de vérification automatique
+[verify-step3.sh](scripts/verify-step3.sh)
 
 ```bash
 # Rendre le script exécutable
-chmod +x verify-step3.sh
+chmod +x ./scripts/verify-step3.sh
 
 # Exécuter le script de vérification
-./verify-step3.sh
+./scripts/verify-step3.sh
 ```
+
+---
+
+## ✅ ÉTAPE 4 : Nettoyage et suppression du cluster ainsi que des configurations AWS créées.
+TODO
+
+---
+
+## ✅ Récapitulatif
+TODO
 
