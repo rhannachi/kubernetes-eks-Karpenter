@@ -546,5 +546,80 @@ chmod +x ./scripts/verify-step3.sh
 ---
 
 ## Récapitulatif
-TODO
+
+### Résumé des 3 Étapes Principales
+
+| # | Étape | Responsable | Prérequis | Résultat |
+|---|-------|-------------|-----------|----------|
+| **ÉTAPE 1** | Préparation IAM et Networking | Admin (1.1-1.2), Utilisateur eks-user (1.3-1.5) | Cluster EKS opérationnel | Rôles IAM créés, ressources taggées |
+| **ÉTAPE 2** | Installation Karpenter via Helm | Utilisateur eks-user | Service accounts configurés | Karpenter controller running |
+| **ÉTAPE 3** | Déploiement NodePool/EC2NodeClass | Utilisateur eks-user | Karpenter installé | Karpenter prêt à provisionner nodes |
+
+### ✅ État Attendu Après Chaque Étape
+
+**Après ÉTAPE 1** :
+- ✅ Policy IAM `KarpenterControllerPolicy-${CLUSTER_NAME}` créée
+- ✅ Service Account `karpenter` dans namespace `karpenter` avec annotation IAM
+- ✅ Rôle `KarpenterNodeRole-${CLUSTER_NAME}` et instance profile créés
+- ✅ Subnets et security group taggés avec `karpenter.sh/discovery=${CLUSTER_NAME}`
+
+**Après ÉTAPE 2** :
+- ✅ Pod Karpenter controller en `Running` (namespace karpenter)
+- ✅ CRDs Karpenter installés (nodepools, nodeclaims, ec2nodeclasses)
+- ✅ Aucune erreur `AccessDenied` dans les logs Karpenter
+
+**Après ÉTAPE 3** :
+- ✅ NodePool `microservices-general-ondemand` créé et `READY`
+- ✅ EC2NodeClass `microservices-general-al2` créé et `READY`
+- ✅ AMI ID correctement configurée dans EC2NodeClass
+
+### Flux d'Exécution Détaillé
+
+```
+ÉTAPE 1 : Préparation
+├─ 1.1 : Définir variables d'environnement
+├─ 1.2 : Créer policy IAM Karpenter (Admin Console)
+├─ 1.3 : Créer service account IRSA (eksctl)
+├─ 1.4 : Créer rôle IAM nodes (AWS CLI)
+├─ 1.5 : Tagger ressources réseau (AWS CLI)
+└─ 1.6 : Vérifier (script verify-step1.sh)
+
+ÉTAPE 2 : Installation Helm
+├─ 2.1 : Préparer configuration
+├─ 2.2 : Installer Karpenter (Helm)
+└─ 2.3 : Vérifier installation (script verify-step2.sh)
+
+ÉTAPE 3 : Déploiement NodePool
+├─ 3.1 : Récupérer AMI ID
+├─ 3.2 : Mettre à jour karpenter-nodepool.yaml
+├─ 3.3 : Déployer NodePool et EC2NodeClass (kubectl apply)
+└─ 3.4 : Vérifier (script verify-step3.sh)
+```
+
+### Points Critiques à Retenir
+
+- ⚠️ **Étape 1.2** : DOIT être faite via Console AWS avec compte admin (créer policy)
+- ⚠️ **Étape 1.3** : Crée le rôle IAM Karpenter via IRSA (lien entre K8s ServiceAccount et rôle AWS)
+- ⚠️ **Étape 1.5** : Tags `karpenter.sh/discovery` ESSENTIELS pour découverte automatique des ressources réseau
+- ✅ **Étape 2** : Réutilise le service account créé en 1.3 (annotations IAM correctes)
+- ✅ **Étape 3.1** : AMI ID DOIT correspondre à Kubernetes 1.34 (EKS-optimisée)
+- ✅ **Sécurité** : Toujours respecter principe du moindre privilège (pas d'AdministratorAccess)
+
+### Vérifications Finales Essentielles
+
+```bash
+# Vérifier Karpenter controller
+kubectl get pods -n karpenter -l app.kubernetes.io/name=karpenter
+
+# Vérifier NodePool (doit être READY)
+kubectl get nodepool microservices-general-ondemand
+
+# Vérifier EC2NodeClass (doit être READY)
+kubectl get ec2nodeclass microservices-general-al2
+
+# Vérifier les logs pour erreurs
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter | grep -i "error\|denied"
+```
+
+**Si tout est ✅ READY**, Karpenter est prêt à provisionner des nodes automatiquement lors du prochain déploiement d'application.
 

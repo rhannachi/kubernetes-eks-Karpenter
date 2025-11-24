@@ -123,8 +123,8 @@ Pour suivre le principe du moindre privilège, nous allons créer une policy per
 
 #### 1 — Préparer le document de policy
 
-Le fichier [eks-admin-policy.json](infra/eks-admin-policy.json) contient les permissions nécessaires pour EKS et Karpenter.
-
+Le fichier [eks-admin-policy.json](infra/eks-admin-policy.json) contient les permissions nécessaires pour EKS et Karpenter.\
+Explication détaillée de ce fichier : [README-eks-admin-policy.md](README-eks-admin-policy.md).\
 Remplace les variables dans le fichier :
 ```shell
 export AWS_REGION="us-east-1"                     # Région la plus proche
@@ -192,4 +192,29 @@ Si tout est bon, la commande doit retourner une liste des add-ons EKS disponible
 ---
 
 ## Récapitulatif
-TODO
+
+### Résumé des Étapes
+
+| # | Étape | Responsable | Détails |
+|---|-------|-------------|---------|
+| 1 | Installation des outils | Utilisateur local | Installer `awscli`, `eksctl`, `kubectl` |
+| 2 | Créer utilisateur IAM | Admin Console AWS | Créer user `eks-user` via IAM Console |
+| 3 | Créer groupe IAM | Admin Console AWS | Créer group `eks-user-group` et ajouter l'utilisateur |
+| 4 | Générer Access Keys | Admin Console AWS | Créer Access Key ID + Secret Access Key |
+| 5 | Attacher policies IAM | Admin Console AWS | Attacher 5 policies au groupe (EKSAdminPolicy, AmazonEKSClusterPolicy, etc.) |
+| 6 | Configurer AWS CLI | Utilisateur eks-user | Exécuter `aws configure` avec les clés générées |
+| 7 | Vérifier la configuration | Utilisateur eks-user | Exécuter `aws sts get-caller-identity` |
+
+### ✅ Vérifications Finales
+
+**La configuration est réussie si** :
+- ✅ `aws sts get-caller-identity` retourne `arn:aws:iam::*:user/eks-user`
+- ✅ `aws iam list-attached-group-policies --group-name eks-user-group` affiche les 5 policies
+- ✅ Les clés Access Key et Secret Access Key sont stockées en sécurité
+
+### Points Clés à Retenir
+
+- ⚠️ **Sécurité** : Les clés secrètes ne sont visibles qu'une seule fois → à conserver précieusement
+- ⚠️ **Permissions** : Utilisateur sans `iam:CreatePolicy` (créé par admin uniquement)
+- ✅ **Moindre privilège** : Permissions minimales et restreintes via custom policy `EKSAdminPolicy`
+- ✅ **Prêt pour étape suivante** : Utilisateur `eks-user` configuré pour créer le cluster EKS

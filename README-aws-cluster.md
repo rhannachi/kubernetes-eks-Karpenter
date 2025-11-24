@@ -1,15 +1,5 @@
 # Création cluster AWS EKS
 
-## Vue d'ensemble
-
-Ce cluster EKS est configuré pour utiliser **Karpenter** comme solution de scaling automatique. Il contient :
-- ✅ 2 nodes système statiques (pour Karpenter, metrics-server, coredns, etc.)
-- ✅ OIDC activé pour les service accounts IAM
-- ✅ Tags pour la découverte automatique par Karpenter
-- ✅ Taints sur les nodes système pour éviter que les workloads applicatifs s'y déploient
-
----
-
 ## 1. Création du cluster Kubernetes
 
 ### Créer le cluster EKS
@@ -121,4 +111,47 @@ Si tu obtiens des métriques (et pas d'erreur), tout est bon ! ✅
 ---
 
 ## Récapitulatif
-TODO
+
+### Résumé des Étapes
+
+| # | Étape | Commande/Action | Temps |
+|---|-------|-----------------|-------|
+| 1 | Créer le cluster EKS | `eksctl create cluster -f ./infra/cluster.yaml` | 15-20 min |
+| 2 | Vérifier les nodes | `kubectl get nodes` | Immédiat |
+| 3 | Vérifier les labels/taints | `kubectl get nodes --show-labels` + `kubectl describe nodes \| grep Taints` | Immédiat |
+| 4 | Activer OIDC | Automatique via `eksctl` | Inclus dans étape 1 |
+| 5 | Déployer metrics-server | `kubectl apply -f infra/metric-server.yaml` | <1 min |
+| 6 | Vérifier metrics-server | `kubectl wait --for=condition=ready pod -l k8s-app=metrics-server -n kube-system` | 1-2 min |
+| 7 | Tester les métriques | `kubectl top nodes` + `kubectl top pods -A` | Immédiat |
+
+### ✅ État Attendu du Cluster
+
+**Après cette étape, vous devez avoir** :
+
+- ✅ **2 nodes système** en état `Ready` avec :
+  - Label : `role=system`, `workload-type=system`
+  - Taint : `CriticalAddonsOnly=true:NoSchedule`
+
+- ✅ **OIDC provider** activé (vérifier avec) :
+  ```bash
+  aws eks describe-cluster --name microservices-demo-cluster --query "cluster.identity.oidc.issuer"
+  ```
+
+- ✅ **metrics-server** déployé et fonctionnel :
+  ```bash
+  kubectl get deployment metrics-server -n kube-system
+  kubectl top nodes  # Doit retourner les métriques CPU/Mémoire
+  ```
+
+- ✅ **Pods critiques** en Running :
+  ```bash
+  kubectl get pods -n kube-system  # coredns, aws-node, kube-proxy, metrics-server
+  ```
+
+### Points Clés à Retenir
+
+- ⚠️ **Taints système** : Empêchent les applications utilisateur de s'exécuter sur les nodes système
+- ✅ **Metrics-server essentiel** : Nécessaire pour HPA et Karpenter (décisions de scaling)
+- ✅ **OIDC activé** : Permet à Karpenter d'assumer un rôle IAM via IRSA
+- ✅ **Nodes système statiques** : Gérés par EKS/eksctl, pas par Karpenter
+- ✅ **Prêt pour étape suivante** : Cluster opérationnel et prêt pour installation de Karpenter

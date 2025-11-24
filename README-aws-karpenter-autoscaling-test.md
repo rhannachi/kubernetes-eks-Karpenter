@@ -512,3 +512,140 @@ kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter | grep -i consolid
 - ⏱️ **Total scale-up** : 2-5 minutes (HPA + Karpenter)
 - ⏱️ **Total scale-down** : 5-10 minutes (HPA + Karpenter consolidation)
 
+---
+
+## Récapitulatif
+
+### Objectif Global
+
+Démontrer le **double-level autoscaling** :
+1. **HPA (Horizontal Pod Autoscaler)** : Augmente/réduit le nombre de **pods** en fonction du CPU
+2. **Karpenter** : Augmente/réduit le nombre de **nodes** en fonction des pods en attente
+
+### Phases du Test
+
+| Phase | Étape | Action | Durée | Résultat |
+|-------|-------|--------|-------|----------|
+| **Préparation** | 1-2 | Déployer app + vérifier métriques | <5 min | App running, metrics OK |
+| **Scale UP** | 3 | Lancer load-generator | 2-3 min | Pods: 1→10, Nodes: 2→3+ |
+| **Observation** | 3.6 | Monitorer avec watch/logs | 2 min | Voir les décisions Karpenter |
+| **Scale DOWN** | 4 | Arrêter load-generator | 2-3 min | Pods: 10→1, Nodes: 3+→2 |
+| **Vérification Finale** | 5 | Vérifier retour à l'état initial | <1 min | État initial confirmé |
+
+### ✅ État Attendu à Chaque Étape
+
+**Étape 1-2 (Préparation)** :
+- ✅ 1 pod php-apache `Running`
+- ✅ 2 nodes système en `Ready`
+- ✅ HPA affichant `0%/50%`
+- ✅ metrics-server en `Running`
+
+**Étape 3 (Scale UP - après ~90-120s)** :
+- ✅ HPA augmente replicas vers 10
+- ✅ Pods en état `Pending` (pas assez de place)
+- ✅ Karpenter détecte pods `Pending`
+- ✅ **2-3 nodes Karpenter créés** (t3.medium on-demand)
+- ✅ Pods se placent progressivement en `Running`
+- ✅ HPA stabilise à 10 replicas
+
+**Étape 4 (Scale DOWN - après arrêt du load)** :
+- ✅ HPA détecte CPU ↓ après 1-2 min
+- ✅ Replicas réduisent progressivement (10 → 5 → 1)
+- ✅ Nodes Karpenter restent pendant 1 minute (consolidation delay)
+- ✅ Karpenter **supprime les nodes vides** après consolidation
+- ✅ Retour aux **2 nodes système** uniquement
+
+**Étape 5 (Vérification)** :
+- ✅ 1 pod php-apache `Running`
+- ✅ 2 nodes système avec label `role=system`
+- ✅ Aucun node Karpenter restant
+- ✅ HPA affichant `0%/50%` (bas CPU)
+
+### Flux d'Autoscaling Observé
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   PHASE SCALE UP                            │
+└─────────────────────────────────────────────────────────────┘
+
+Load-Generator activé
+        ↓
+Charge CPU augmente (50% seuil atteint)
+        ↓
+HPA détecte CPU > 50% (tous les 15s)
+        ↓
+Replicas : 1 → 2 → 5 → 10 (augmentation progressive)
+        ↓
+10 pods lancés, mais 2 nodes saturées
+        ↓
+Pods en état "Pending" (pas de place)
+        ↓
+Karpenter détecte pods Pending
+        ↓
+Crée 2-3 nodes EC2 (t3.medium, ~60s par node)
+        ↓
+Pods se placent sur nouveaux nodes
+        ↓
+Cluster stable : 10 pods Running + 3-4 nodes Ready
+
+┌─────────────────────────────────────────────────────────────┐
+│                   PHASE SCALE DOWN                          │
+└─────────────────────────────────────────────────────────────┘
+
+Load-Generator arrêté
+        ↓
+Charge CPU diminue progressivement
+        ↓
+HPA détecte CPU < 50% (après ~1-2 min)
+        ↓
+Replicas : 10 → 5 → 2 → 1 (réduction progressive)
+        ↓
+Moins de pods en Running
+        ↓
+Karpenter détecte nodes underutilisés/vides
+        ↓
+Attend 1 minute (consolidation delay par défaut)
+        ↓
+Réschédule les pods sur les nodes existants
+        ↓
+Supprime les nodes vides (termine instances EC2)
+        ↓
+Cluster retour état initial : 1 pod + 2 nodes système
+```
+
+### Métriques Clés à Observer
+
+**Via `watch kubectl get hpa`** :
+- `TARGETS` : CPU actuel / seuil (ex: `245%/50%`)
+- `REPLICAS` : nombre actuel de pods
+
+**Via `watch kubectl get nodes`** :
+- Voir les nodes Karpenter apparaître et disparaître
+- Vérifier le `READY` status
+
+**Via `kubectl logs -n karpenter`** :
+- Voir les décisions Karpenter en temps réel
+- Chercher les messages "provision", "consolidate", etc.
+
+### ✅ Vérifications Essentielles
+
+**Si HPA montre `<unknown>` pour CPU** :
+→ metrics-server n'est pas prêt, attendre 2-3 min
+
+**Si pods ne scale pas au-delà de 1** :
+→ Vérifier que la charge est bien générée et CPU > 50%
+
+**Si Karpenter crée trop de nodes** :
+→ Vérifier la configuration NodePool (limites de ressources)
+
+**Si nodes ne se suppriment pas après scale-down** :
+→ Vérifier les logs Karpenter pour `consolidat` ou pods bloqués
+
+### Leçons Apprises du Test
+
+1. **HPA + Karpenter = Orchestration complète** : Gestion automatique à 2 niveaux
+2. **Timing est critique** : Délais d'EC2 boot, métriques, consolidation à comprendre
+3. **Observation temps réel** : `watch`, `describe`, `logs` sont essentiels pour déboguer
+4. **Consolidation ≠ Suppression immédiate** : Délais et conditions de consolidation importants
+5. **Sécurité taints/tolerations** : System nodes restent isolés même pendant le stress
+
