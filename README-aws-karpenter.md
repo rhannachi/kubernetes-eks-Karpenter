@@ -1,8 +1,8 @@
 # Installation de Karpenter EKS AWS
 
-## 🚀 Prérequis et Préparation
+## Prérequis et Préparation
 
-### 📋 Prérequis Système
+### Prérequis Système
 
 **Outils Nécessaires** :
 - ✅ AWS CLI (version 2.x recommandée)
@@ -11,7 +11,7 @@
 - ✅ Helm (version 3.8+)
 - ✅ Compte AWS avec droits administrateur
 
-### 🔐 Considérations de Sécurité
+### Considérations de Sécurité
 
 **Principes de Sécurité** :
 - Utilisez toujours le principe du moindre privilège
@@ -19,7 +19,7 @@
 - Mettez en place la séparation des rôles
 - Utilisez l'authentification MFA
 
-### 🌐 Préparation de l'Environnement
+### Préparation de l'Environnement
 
 ### 1.1 — Définir les variables d'environnement
 
@@ -30,7 +30,7 @@ export AWS_REGION="us-east-1"                     # Région la plus proche
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Vérification de la configuration
-echo "🔹 Configuration initiale :"
+echo "Configuration initiale :"
 echo "  Nom du Cluster   : ${CLUSTER_NAME}"
 echo "  Région AWS      : ${AWS_REGION}"
 echo "  ID du Compte    : ${AWS_ACCOUNT_ID}"
@@ -44,22 +44,22 @@ fi
 
 ### 1.2 — Créer la policy IAM personnalisée pour Karpenter
 
-> 🛡️ **POLITIQUE DE SÉCURITÉ**
+> ⚠️ POLITIQUE DE SÉCURITÉ
 > - Utilisez TOUJOURS une politique à minima
 > - Jamais `AdministratorAccess`
 > - Permissions explicites et restreintes
 
-⚠️ **IMPORTANT** :
+⚠️ IMPORTANT :
 - Cette étape requiert un compte avec droits administrateur
 - L'utilisateur `eks-user` n'a PAS la permission `iam:CreatePolicy`
 - Connexion via la **Console AWS** obligatoire
 
-#### 🔒 1 — Préparer la Policy IAM Karpenter
+#### 1 — Préparer la Policy IAM Karpenter
 
 **Objectifs de la Policy** :
-- 🎯 Fournir des permissions minimales
-- 🔒 Sécuriser l'accès aux ressources AWS
-- 🚦 Contrôler précisément les actions autorisées
+- Fournir des permissions minimales
+- Sécuriser l'accès aux ressources AWS
+- Contrôler précisément les actions autorisées
 
 **Bonnes Pratiques** :
 - Utilisez des conditions de restriction
@@ -102,7 +102,7 @@ aws iam get-policy --policy-arn arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterC
 
 ### 1.3 — Créer le Service Account IAM pour Karpenter
 
-> 💡 **NOTE** : Le service account est créé directement dans le namespace `karpenter` (même namespace où Karpenter sera installé). Cela évite les problèmes de trust policy.
+NOTE : Le service account est créé directement dans le namespace `karpenter` (même namespace où Karpenter sera installé). Cela évite les problèmes de trust policy.
 
 ```bash
 # Créer le namespace karpenter en premier
@@ -223,7 +223,7 @@ for subnet in $SUBNET_IDS; do
         --tags \
             Key=karpenter.sh/discovery,Value=${CLUSTER_NAME} \
             Key=eks:cluster-name,Value=${CLUSTER_NAME}
-    echo "🏷️ Sous-réseau taggué : $subnet"
+    echo "Sous-réseau taggué : $subnet"
 done
 
 # Vérifier que les tags ont été appliqués
@@ -253,7 +253,7 @@ if [[ -n "$CLUSTER_SG" ]]; then
         --tags \
             Key=karpenter.sh/discovery,Value=${CLUSTER_NAME} \
             Key=eks:cluster-name,Value=${CLUSTER_NAME}
-    echo "🏷️ Security group taggué : $CLUSTER_SG"
+    echo "Security group taggué : $CLUSTER_SG"
 else
     echo "❌ Erreur : Impossible de trouver le security group du cluster"
     exit 1
@@ -291,37 +291,37 @@ aws ec2 describe-subnets \
 
 ---
 
-## ✅ ÉTAPE 2 : Installer Karpenter via Helm
+## ÉTAPE 2 : Installer Karpenter via Helm
 
 ### 2.1 — Préparation de l'Installation Helm Karpenter
 
-#### 🔍 Vérification Préalable
+#### Vérification Préalable
 
 **Checklist avant Installation** :
 - ✅ Cluster EKS existant et opérationnel
 - ✅ Permissions IAM configurées
 - ✅ Helm installé et configuré
 
-#### 🛠 Récupération Dynamique des Informations
+#### Récupération Dynamique des Informations
 
 ```bash
-# 🔐 Définition des variables de configuration
+# Définition des variables de configuration
 export CLUSTER_NAME="microservices-demo-cluster"
 export AWS_REGION="us-east-1"
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-# 🌐 Récupération dynamique de l'endpoint du cluster
+# Récupération dynamique de l'endpoint du cluster
 export CLUSTER_ENDPOINT=$(aws eks describe-cluster \
   --name "${CLUSTER_NAME}" \
   --region "${AWS_REGION}" \
   --query 'cluster.endpoint' \
   --output text)
 
-# 🔑 Récupération dynamique du rôle IAM Karpenter
+# Récupération dynamique du rôle IAM Karpenter
 export KARPENTER_IAM_ROLE_ARN=$(kubectl get sa karpenter -n karpenter \
   -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}')
 
-# 🚨 Validation de la configuration
+# Validation de la configuration
 validate_config() {
     local ERRORS=0
 
@@ -340,12 +340,12 @@ validate_config() {
 
 # Exécution de la validation
 if ! validate_config; then
-    echo "🛑 Configuration invalide. Vérifiez vos paramètres et permissions."
+    echo "ERREUR : Configuration invalide. Vérifiez vos paramètres et permissions."
     exit 1
 fi
 
-# 📋 Affichage de la configuration
-echo "🔹 Configuration du Cluster Karpenter :"
+# Affichage de la configuration
+echo "Configuration du Cluster Karpenter :"
 echo "  Nom du Cluster   : ${CLUSTER_NAME}"
 echo "  Région AWS      : ${AWS_REGION}"
 echo "  ID du Compte    : ${AWS_ACCOUNT_ID}"
@@ -354,9 +354,9 @@ echo "  Rôle IAM        : ${KARPENTER_IAM_ROLE_ARN}"
 ```
 
 **Notes de Sécurité** :
-- 🔒 Le rôle IAM doit avoir des permissions minimales
-- 🚦 Vérifiez les autorisations avant l'installation
-- 🔍 Utilisez toujours des méthodes dynamiques de récupération
+- Le rôle IAM doit avoir des permissions minimales
+- Vérifiez les autorisations avant l'installation
+- Utilisez toujours des méthodes dynamiques de récupération
 
 ### 2.2 — Installer Karpenter via Helm
 
@@ -389,7 +389,7 @@ helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
 
 ### 2.3 — Vérifier l'installation de Karpenter
 
-#### 🔍 Script de vérification automatique
+#### Script de vérification automatique
 
 Un script de vérification complet a été créé pour valider l'installation de Karpenter [verify-step2.sh](scripts/verify-step2.sh):
 
@@ -426,13 +426,13 @@ nodepools.karpenter.sh
 kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter --tail=50
 ```
 
-#### ⚠️ Points de vigilance
+#### Points de vigilance
 
 - Les logs ne doivent **PAS** contenir d'erreurs `AccessDenied`
 - Tous les pods doivent être en statut `Running`
 - Le déploiement Helm doit être en statut `deployed`
 
-#### 🛠️ Dépannage
+#### Dépannage
 
 Si des erreurs persistent :
 1. Vérifiez les permissions IAM
@@ -442,7 +442,7 @@ Si des erreurs persistent :
 
 ---
 
-## ✅ ÉTAPE 3 : Déployer le NodePool et EC2NodeClass Karpenter
+## ÉTAPE 3 : Déployer le NodePool et EC2NodeClass Karpenter
 
 ### 3.1 — Récupérer l'AMI utilisée par les nœuds actuels
 
@@ -530,9 +530,9 @@ Si tout est OK, tu devrais voir `Ready: True` pour le NodePool et l'EC2NodeClass
 
 ---
 
-### 3.4 — Vérifier la configuration et l'installation de Karpenter 
+### 3.4 — Vérifier la configuration et l'installation de Karpenter
 
-#### 🔍 Script de vérification automatique
+#### Script de vérification automatique
 [verify-step3.sh](scripts/verify-step3.sh)
 
 ```bash
@@ -545,11 +545,6 @@ chmod +x ./scripts/verify-step3.sh
 
 ---
 
-## ✅ ÉTAPE 4 : Nettoyage et suppression du cluster ainsi que des configurations AWS créées.
-TODO
-
----
-
-## ✅ Récapitulatif
+## Récapitulatif
 TODO
 

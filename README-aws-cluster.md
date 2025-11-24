@@ -24,7 +24,7 @@ Le fichier [cluster.yaml](infra/cluster.yaml) définit :
 eksctl create cluster -f ./infra/cluster.yaml
 ```
 
-⏳ **Temps d'attente estimé** : 15-20 minutes
+Temps d'attente estimé : 15-20 minutes
 
 ### Vérifier que les nœuds sont opérationnels
 
@@ -120,5 +120,5 @@ Si tu obtiens des métriques (et pas d'erreur), tout est bon ! ✅
 
 ---
 
-## ✅ Récapitulatif
+## Récapitulatif
 TODO

@@ -43,7 +43,7 @@ Tu dois disposer de :
 
 ### Étape 1 : Créer un nouvel utilisateur IAM
 
-> ⚠️ **IMPORTANT** : Les Étapes 1, 2 et 5 doivent être effectuées via la **Console AWS** (interface web) avec un compte administrateur, car un utilisateur IAM sans permissions ne peut pas se créer ou s'attribuer des permissions lui-même via CLI.
+> ⚠️ IMPORTANT : Les Étapes 1, 2 et 5 doivent être effectuées via la **Console AWS** (interface web) avec un compte administrateur, car un utilisateur IAM sans permissions ne peut pas se créer ou s'attribuer des permissions lui-même via CLI.
 
 #### Via la Console AWS :
 
@@ -79,7 +79,7 @@ Tu dois disposer de :
 4. Sélectionne **Command Line Interface (CLI)**
 5. Coche la case de confirmation
 6. Clique sur **Next** puis **Create access key**
-7. **⚠️ IMPORTANT** : Télécharge le fichier CSV ou note bien :
+7. ⚠️ IMPORTANT : Télécharge le fichier CSV ou note bien :
    - **Access key ID** (ex: `AKIA...`)
    - **Secret access key** (ex: `abcd...`)
 
@@ -117,7 +117,7 @@ Tu dois voir ton utilisateur IAM :
 
 ### Étape 5 : Créer et attacher une policy IAM personnalisée pour EKS et Karpenter
 
-> ⚠️ **IMPORTANT** : Cette étape doit être effectuée via la **Console AWS** avec un compte administrateur.
+> ⚠️ IMPORTANT : Cette étape doit être effectuée via la **Console AWS** avec un compte administrateur.
 
 Pour suivre le principe du moindre privilège, nous allons créer une policy personnalisée qui donne uniquement les permissions nécessaires pour gérer un cluster EKS avec Karpenter.
 
@@ -146,11 +146,11 @@ sed -i "s/\${AWS_REGION}/${AWS_REGION}/g" infra/eks-admin-policy.json
 1. Va dans **IAM** → **Groups** → `eks-user-group`
 2. Onglet **Permissions** → **Add permissions** → **Attach policies**
 3. Cherche et sélectionne les 5 policies suivantes :
-   - ✅ `EKSAdminPolicy` (celle que tu viens de créer)
-   - ✅ `AmazonEKSClusterPolicy`
-   - ✅ `AmazonEKSWorkerNodePolicy`
-   - ✅ `AmazonEC2ContainerRegistryReadOnly`
-   - ✅ `IAMReadOnlyAccess` (permet de vérifier les configurations IAM)
+   - ✅ EKSAdminPolicy (celle que tu viens de créer)
+   - ✅ AmazonEKSClusterPolicy
+   - ✅ AmazonEKSWorkerNodePolicy
+   - ✅ AmazonEC2ContainerRegistryReadOnly
+   - ✅ IAMReadOnlyAccess (permet de vérifier les configurations IAM)
 4. Clique sur **Attach policies**
 
 #### 4 — Vérifier que toutes les policies sont bien attachées
@@ -191,5 +191,5 @@ Si tout est bon, la commande doit retourner une liste des add-ons EKS disponible
 
 ---
 
-## ✅ Récapitulatif
+## Récapitulatif
 TODO
