@@ -19,9 +19,15 @@ spec:
         name: microservices-general-al2
   limits:
     cpu: "100"
+  # 🛑 CONSOLIDATION DÉSACTIVÉE TEMPORAIREMENT POUR LE TEST
+  # Cela empêche Karpenter de supprimer les nodes trop agressivement
+  # Une fois le test terminé, réactivez avec les paramètres originaux:
+  # disruption:
+  #   consolidationPolicy: WhenEmptyOrUnderutilized
+  #   consolidateAfter: 1m
   disruption:
-    consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 1m
+    consolidationPolicy: WhenEmpty  # Seulement les nodes vraiment vides
+    consolidateAfter: 10m           # Attendre 10min avant de consolider
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
