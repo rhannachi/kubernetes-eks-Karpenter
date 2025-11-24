@@ -191,6 +191,76 @@ Si tout est bon, la commande doit retourner une liste des add-ons EKS disponible
 
 ---
 
+## 📘 Détail des Politiques IAM
+
+### 🔒 AmazonEKSClusterPolicy
+
+`✅ Politique officielle pour la gestion des clusters EKS`
+
+#### Description Technique
+- 🌐 Permet de gérer et interagir avec les clusters Kubernetes EKS
+- 🛠️ Autorise les opérations essentielles comme :
+  - Création de clusters
+  - Mise à jour de la configuration du cluster
+  - Gestion des versions Kubernetes
+- 🔐 Sécurise les interactions entre AWS et votre cluster Kubernetes
+
+#### Impact sur le Cluster
+- Garantit que votre utilisateur peut :
+  - Créer de nouveaux clusters
+  - Mettre à jour les configurations existantes
+  - Gérer les versions et add-ons Kubernetes
+
+### 🚀 AmazonEKSWorkerNodePolicy
+
+`✅ Politique de gestion des nœuds de travail EKS`
+
+#### Description Technique
+- 🖥️ Gère le cycle de vie des nœuds worker dans votre cluster
+- 🔧 Permissions pour :
+  - Rejoindre un cluster EKS
+  - Gérer les instances EC2
+  - Configurer les ressources réseau
+- 🌍 Essentielle pour l'intégration des nœuds Kubernetes
+
+#### Impact sur le Cluster
+- Permet le déploiement et la gestion dynamique des nœuds worker
+- Facilite l'auto-scaling et le remplacement des nœuds défectueux
+
+### 📦 AmazonEC2ContainerRegistryReadOnly
+
+`✅ Politique de lecture pour le registre de conteneurs`
+
+#### Description Technique
+- 🖼️ Autorise uniquement la lecture des images de conteneur
+- 🔍 Permet de :
+  - Lister les référentiels
+  - Récupérer des métadonnées d'images
+  - Télécharger des images de conteneur
+- 🛡️ Limite strictement l'accès en lecture seule
+
+#### Impact sur le Cluster
+- Sécurise l'accès aux images de conteneur
+- Permet le déploiement d'applications à partir de registres privés
+
+### 🕵️ IAMReadOnlyAccess
+
+`✅ Politique de consultation des configurations IAM`
+
+#### Description Technique
+- 👀 Fournit un accès en lecture seule à la configuration IAM
+- 🔎 Autorise à :
+  - Lister les utilisateurs
+  - Consulter les rôles et politiques
+  - Vérifier les configurations de sécurité
+- 🚫 Aucune modification possible
+
+#### Impact sur le Cluster
+- Permet l'audit des configurations de sécurité
+- Facilite la vérification des permissions sans risque de modification
+
+---
+
 ## Récapitulatif
 
 ### Résumé des Étapes
