@@ -15,35 +15,112 @@ iam:
   withOIDC: true
 
 managedNodeGroups:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # NŒUDS SYSTÈME (System Nodes)
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Ces nœuds sont dédiés à l'infrastructure Kubernetes et Karpenter.
+  # Ils ne runneront JAMAIS les workloads applicatifs (php-apache).
+  #
+  # Architecture :
+  #   ┌─────────────────────────────────────────────────────┐
+  #   │  EKS Cluster - Deux couches d'autoscaling          │
+  #   ├─────────────────────────────────────────────────────┤
+  #   │                                                      │
+  #   │  System Nodes (2x t3.medium, fixes)                │
+  #   │  ├─ Karpenter controller (=gère les nodes dynamiques)
+  #   │  ├─ metrics-server (=fourni les métriques CPU/RAM)
+  #   │  ├─ coredns (=service DNS interne)                 │
+  #   │  └─ vpc-cni (=plugin réseau AWS)                   │
+  #   │     Taint: CriticalAddonsOnly=true:NoSchedule      │
+  #   │     (↓ Empêche les pods applicatifs de s'y programmer)
+  #   │                                                      │
+  #   │  Karpenter Dynamic Nodes (0-N, autoscalés)         │
+  #   │  └─ php-apache pods (=votre application)           │
+  #   │     (↓ Auto-créés par Karpenter quand les pods en ont besoin)
+  #   │                                                      │
+  #   └─────────────────────────────────────────────────────┘
+  #
+  # Flux d'autoscaling :
+  #   HPA scale pods → Pods pending → Karpenter détecte → Crée nœud
+  # ═══════════════════════════════════════════════════════════════════════════
   - name: karpenter-system-nodes
     instanceType: t3.medium
     desiredCapacity: 2
     minSize: 2
-    maxSize: 2  # Pas d'autoscaling - ces nodes sont réservés pour Karpenter et les services système
+    maxSize: 2  # ⚠️ FIXE - Pas d'autoscaling : ces nœuds sont toujours disponibles pour le système
     volumeSize: 40
     iam:
       withAddonPolicies:
         cloudWatch: true
-        autoScaler: false  # Désactivé - Karpenter gère le scaling
+        autoScaler: false  # ⚠️ Désactivé - Karpenter (pas EKS Autoscaler) gère le scaling des nœuds applicatifs
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # LABELS : Identifient les nœuds système pour le monitoring/debugging
+    # ─────────────────────────────────────────────────────────────────────────
+    # Permet de filtrer les nœuds et leurs pods :
+    #   kubectl get nodes -L role,workload-type
+    #   kubectl get pods --field-selector spec.nodeName=<system-node>
     labels:
-      role: system
-      workload-type: system
+      role: system                    # ✅ Catégorie : c'est un nœud système
+      workload-type: system           # ✅ Type de charge : infrastructure système
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # TAINTS : Restriction d'accès - "CriticalAddonsOnly"
+    # ─────────────────────────────────────────────────────────────────────────
+    # TAINT = Une "interdiction" : les pods SANS tolération ne peuvent PAS être programmés ici.
+    #
+    # Sintaxe :
+    #   key: CriticalAddonsOnly      (= identifie le type de restriction)
+    #   value: "true"                 (= la valeur du taint)
+    #   effect: NoSchedule            (= les pods sans tolération = REJETÉS)
+    #
+    # POURQUOI CriticalAddonsOnly ?
+    # - Réserve ces nœuds pour les services système critiques
+    # - Empêche les pods applicatifs (php-apache) de "voler" les ressources
+    # - Garantit que Karpenter controller reste toujours stable
+    #
+    # Qui peut s'y programmer ?
+    #   ✅ Pods AVEC tolération : karpenter, metrics-server, coredns, vpc-cni
+    #   ❌ Pods SANS tolération : php-apache (les workloads applicatifs)
+    #
+    # Exemple de tolération (dans un pod) :
+    #   tolerations:
+    #   - key: CriticalAddonsOnly
+    #     operator: Equal
+    #     value: "true"
+    #     effect: NoSchedule
     taints:
       - key: CriticalAddonsOnly
         value: "true"
         effect: NoSchedule
+
     tags:
       Name: "karpenter-system-node"
-      karpenter.sh/discovery: "microservices-demo-cluster"  # Pour que Karpenter découvre les ressources VPC
+      # ✅ Tag pour que Karpenter découvre VPC, subnets, security groups
+      karpenter.sh/discovery: "microservices-demo-cluster"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ADDONS KUBERNETES ESSENTIELS
+# ═══════════════════════════════════════════════════════════════════════════
+# Ces addons sont les services système qui tourneront sur les System Nodes.
+# Ils ont tous une TOLÉRATION pour CriticalAddonsOnly=true:NoSchedule
+# (automatiquement ajoutée par EKS/Kubernetes)
 addons:
+  # vpc-cni : Plugin réseau AWS (nécessaire pour que les pods aient des IPs privées AWS)
   - name: vpc-cni
     version: latest
+
+  # coredns : Service DNS du cluster (résout service names en IPs)
   - name: coredns
     version: latest
+
+  # kube-proxy : Gère les règles iptables pour le routage des services
   - name: kube-proxy
     version: latest
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MONITORING & LOGGING
+# ═══════════════════════════════════════════════════════════════════════════
 cloudWatch:
   clusterLogging:
-    enableTypes: ["*"]
+    enableTypes: ["*"]  # ✅ Active tous les types de logs CloudWatch pour le debugging
