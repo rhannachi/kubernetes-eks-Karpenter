@@ -12,8 +12,16 @@ spec:
       labels:
         app: php-apache
     spec:
-      tolerations:
-      - operator: "Exists"  # Tolère tous les taints
+      # ✅ NO TOLERATIONS - Application pod intentionally lacks toleration for CriticalAddonsOnly taint
+      # This ensures php-apache pods are REJECTED from System Nodes (protected by taint)
+      # and are scheduled ONLY on Karpenter-managed nodes.
+      #
+      # Scheduler behavior:
+      #   System Nodes (with taint: CriticalAddonsOnly=true:NoSchedule) → ❌ REJECTED
+      #   Karpenter Nodes (no taints) → ✅ ACCEPTED
+      #
+      # If no Karpenter nodes exist, pods stay in "Pending" state until Karpenter provisions a new node (~30-60s).
+      # This is the EXPECTED behavior - it triggers Karpenter's autoscaling feature.
       containers:
         - name: php-apache
           image: k8s.gcr.io/hpa-example

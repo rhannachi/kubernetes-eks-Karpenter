@@ -1,4 +1,41 @@
 # eks-cluster.yaml
+# ═══════════════════════════════════════════════════════════════════════════
+# EKS CLUSTER CONFIGURATION FOR KARPENTER TWO-LEVEL AUTOSCALING
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ARCHITECTURE OVERVIEW
+# ─────────────────────────────────────────────────────────────────────────
+# This cluster implements a two-tier node management strategy:
+#
+# TIER 1: SYSTEM NODES (Static, Protected)
+#   • Count: 2x t3.medium (fixed)
+#   • Role: Run critical Kubernetes services only
+#   • Services: Karpenter controller, metrics-server, coredns, vpc-cni
+#   • Protection: CriticalAddonsOnly=true:NoSchedule taint prevents application pods
+#   • Cost: Fixed (~$60/month for 2 instances)
+#
+# TIER 2: APPLICATION NODES (Dynamic, Managed by Karpenter)
+#   • Count: 0-N t3.medium/t3.large (scales automatically)
+#   • Role: Run application workloads (php-apache, etc.)
+#   • No taints: Pods scheduled freely on these nodes
+#   • Trigger: HPA scales pods → pods become Pending → Karpenter provisions nodes
+#   • Cost: Variable (pay only for what you use)
+#
+# IMPORTANT: Application pods (k8s/base/deployment.yaml, k8s/utils/load-generator.yaml)
+# DO NOT have tolerations for the CriticalAddonsOnly taint. This is INTENTIONAL:
+#
+#   Pod Scheduling Logic:
+#   ├─ System Nodes (with taint) → ❌ REJECTED (no toleration)
+#   ├─ Karpenter Nodes (no taint) → ✅ ACCEPTED
+#   └─ If no Karpenter nodes exist → Pod stays Pending until Karpenter creates one (~30-60s)
+#
+# This design ensures:
+#   ✅ System services are never starved by application workloads
+#   ✅ Costs are minimized (no permanent application node overhead)
+#   ✅ Autoscaling works as designed (0→N nodes on demand)
+#   ✅ Clear separation between infrastructure and applications
+# ═══════════════════════════════════════════════════════════════════════════
+
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 

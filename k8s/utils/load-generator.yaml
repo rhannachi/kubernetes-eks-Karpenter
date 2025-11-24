@@ -3,8 +3,20 @@ kind: Pod
 metadata:
   name: load-generator
 spec:
-  tolerations:
-  - operator: "Exists"  # Tolère tous les taints
+  # ✅ NO TOLERATIONS - Load generator pod is intentionally NOT tolerated for CriticalAddonsOnly taint
+  # This ensures load-generator is REJECTED from System Nodes
+  # and scheduled ONLY on Karpenter-managed nodes (alongside php-apache pods).
+  #
+  # Scheduling behavior:
+  #   System Nodes (protected by taint) → ❌ REJECTED
+  #   Karpenter Nodes → ✅ ACCEPTED (same node or different node as php-apache)
+  #
+  # Expected workflow:
+  #   1. Load-generator pod created → Pending (no nodes available)
+  #   2. Karpenter detects pending pods → Provisions new node(s) (~30-60s)
+  #   3. Pods scheduled to Karpenter nodes → Running
+  #   4. High CPU usage triggers HPA scaling
+  #   5. More pods created → Karpenter provisions more nodes as needed
   containers:
   - name: load-generator
     image: busybox
