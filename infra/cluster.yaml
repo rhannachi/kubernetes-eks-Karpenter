@@ -86,6 +86,12 @@ managedNodeGroups:
     minSize: 2
     maxSize: 2  # ⚠️ FIXE - Pas d'autoscaling : ces nœuds sont toujours disponibles pour le système
     volumeSize: 40
+    #ssh:
+      # ⚠️ IMPORTANT : Remplacez "my-key" par le nom de votre clé EC2 existante
+      # Ou laissez vide pour que eksctl génère une nouvelle clé
+      # Exemple: keyName: my-eks-key
+      #keyName: my-eks-key  # ✅ Spécifiez votre clé EC2 existante ici
+      # allowSSH: true     # Autorise SSH sur les nœuds (activé par défaut si keyName est spécifié)
     iam:
       withAddonPolicies:
         cloudWatch: true
