@@ -1,4 +1,4 @@
-# Installation et configuration de Karpenter avec Helm sur un cluster EKS AWS
+# Installation et configuration de Karpenter avec Helm sur un cluster EKS AWS 
 
 Avant de passer à la mise en place d'un HPA avec un auto-scaling automatisé grâce à Karpenter sur un cluster EKS AWS, vous pouvez tester un HPA sur Minikube
 
